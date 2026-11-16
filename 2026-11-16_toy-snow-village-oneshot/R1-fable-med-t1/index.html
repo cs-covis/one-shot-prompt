@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>눈 내리는 밤의 작은 마을</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #070d1f; font-family: "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; }
+  canvas { display: block; cursor: grab; touch-action: none; }
+  canvas:active { cursor: grabbing; }
+  #title {
+    position: fixed; top: 22px; left: 26px; color: #fff; pointer-events: none;
+    text-shadow: 0 2px 12px rgba(0,0,0,.55);
+  }
+  #title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: .04em; }
+  #title p { margin: 6px 0 0; font-size: 13px; opacity: .8; }
+  #toggle {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    padding: 12px 26px; font-size: 16px; font-family: inherit; color: #fff;
+    background: rgba(20, 30, 60, .5); border: 1px solid rgba(255,255,255,.35);
+    border-radius: 999px; cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 6px 24px rgba(0,0,0,.3); transition: background .3s, transform .15s;
+  }
+  #toggle:hover { background: rgba(60, 80, 130, .65); }
+  #toggle:active { transform: translateX(-50%) scale(.96); }
+  #err { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; color: #fff; text-align: center; padding: 30px; }
+</style>
+</head>
+<body>
+<div id="title">
+  <h1>❄ 눈 내리는 작은 마을</h1>
+  <p>드래그: 둘러보기 · 휠: 확대/축소</p>
+</div>
+<button id="toggle">☀️ 낮으로 바꾸기</button>
+<div id="err">3D 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script>
+  window.addEventListener('error', e => {
+    if (e.target && e.target.tagName === 'SCRIPT') document.getElementById('err').style.display = 'flex';
+  }, true);
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ---------- 기본 설정 ---------- */
+let seed = 20261116;
+const rand = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const rr = (a, b) => a + rand() * (b - a);
+const pick = arr => arr[Math.floor(rand() * arr.length)];
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x101a30, 0.012);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 1000);
+camera.position.set(30, 17, 38);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 3, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.enablePan = false;
+controls.minDistance = 12;
+controls.maxDistance = 75;
+controls.maxPolarAngle = Math.PI / 2 - 0.07;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.35;
+let resumeTimer;
+controls.addEventListener('start', () => { clearTimeout(resumeTimer); controls.autoRotate = false; });
+controls.addEventListener('end', () => { resumeTimer = setTimeout(() => controls.autoRotate = true, 5000); });
+
+/* ---------- 텍스처 ---------- */
+function radialTexture(stops) {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  stops.forEach(([o, col]) => grad.addColorStop(o, col));
+  g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const glowTex = radialTexture([[0, 'rgba(255,255,255,1)'], [0.25, 'rgba(255,255,255,.55)'], [0.6, 'rgba(255,255,255,.12)'], [1, 'rgba(255,255,255,0)']]);
+const softTex = radialTexture([[0, 'rgba(255,255,255,.9)'], [0.5, 'rgba(255,255,255,.4)'], [1, 'rgba(255,255,255,0)']]);
+
+/* ---------- 하늘 ---------- */
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { top: { value: new THREE.Color() }, bottom: { value: new THREE.Color() } },
+  vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `uniform vec3 top; uniform vec3 bottom; varying vec3 vDir;
+    void main(){ float h = pow(clamp(normalize(vDir).y, 0.0, 1.0), 0.55); gl_FragColor = vec4(mix(bottom, top, h), 1.0); }`
+});
+const sky = new THREE.Mesh(new THREE.SphereGeometry(400, 32, 16), skyMat);
+sky.renderOrder = -10;
+scene.add(sky);
+
+// 별
+const starPos = [];
+for (let i = 0; i < 1400; i++) {
+  const th = rand() * Math.PI * 2, y = rr(0.06, 1), r = Math.sqrt(1 - y * y);
+  starPos.push(Math.cos(th) * r * 380, y * 380, Math.sin(th) * r * 380);
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+const starMat = new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.7, sizeAttenuation: false, transparent: true, fog: false, depthWrite: false });
+const stars = new THREE.Points(starGeo, starMat);
+stars.renderOrder = -9;
+scene.add(stars);
+
+// 달과 해
+const MOON_DIR = new THREE.Vector3(-0.55, 0.6, -0.58).normalize();
+const SUN_DIR = new THREE.Vector3(0.5, 0.72, 0.48).normalize();
+function celestial(dir, radius, color, haloSize, haloColor) {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color, fog: false, transparent: true, depthWrite: false });
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 16), mat));
+  const hmat = new THREE.SpriteMaterial({ map: glowTex, color: haloColor, fog: false, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const halo = new THREE.Sprite(hmat); halo.scale.setScalar(haloSize); g.add(halo);
+  g.position.copy(dir).multiplyScalar(350);
+  g.renderOrder = -8;
+  scene.add(g);
+  return { mat, hmat };
+}
+const moon = celestial(MOON_DIR, 13, 0xf6f2dc, 110, 0x9db4ff);
+const sun = celestial(SUN_DIR, 12, 0xffffff, 170, 0xfff3d8);
+
+/* ---------- 조명 ---------- */
+const hemi = new THREE.HemisphereLight(0xffffff, 0xffffff, 1);
+scene.add(hemi);
+const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+dirLight.castShadow = true;
+dirLight.shadow.mapSize.set(2048, 2048);
+Object.assign(dirLight.shadow.camera, { left: -48, right: 48, top: 48, bottom: -48, near: 1, far: 220 });
+dirLight.shadow.bias = -0.0004;
+dirLight.shadow.normalBias = 0.04;
+scene.add(dirLight, dirLight.target);
+
+/* ---------- 지형 ---------- */
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function groundH(x, z) {
+  const r = Math.hypot(x, z);
+  const s = smooth(31, 75, r);
+  const hills = 7 + 5 * Math.sin(x * 0.045 + 0.5) * Math.cos(z * 0.052) + 3 * Math.sin(x * 0.1 + 1.3) * Math.sin(z * 0.085 + 0.4);
+  const bumps = 0.12 * Math.sin(x * 0.6) * Math.cos(z * 0.5) * smooth(4, 12, r);
+  return s * hills + bumps;
+}
+const groundGeo = new THREE.PlaneGeometry(520, 520, 200, 200);
+groundGeo.rotateX(-Math.PI / 2);
+{
+  const p = groundGeo.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setY(i, groundH(p.getX(i), p.getZ(i)));
+  groundGeo.computeVertexNormals();
+}
+const snowMat = new THREE.MeshStandardMaterial({ color: 0xf3f7ff, roughness: 0.92 });
+const ground = new THREE.Mesh(groundGeo, snowMat);
+ground.receiveShadow = true;
+scene.add(ground);
+
+/* ---------- 공용 재질 ---------- */
+const std = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...o });
+const roofMat = std(0x3b2a26);
+const frameMat = std(0xf2ece0);
+const doorMats = [std(0x5a3421), std(0x7a2e2a), std(0x2f4f43)];
+const brickMat = std(0x8a4b3c);
+const woodMat = std(0x4a3323);
+const leafMat = std(0x1f4d36);
+const metalMat = std(0x22262e, { roughness: 0.5, metalness: 0.6 });
+const wallColors = [0xb5533c, 0xc9a36b, 0x7d8fa3, 0xa86f4a, 0xd8c9a8, 0x6f8560, 0x9a5050, 0xb98a5e, 0x8793b8];
+
+// 창문 재질 (밤에는 발광, 낮에는 유리)
+const litWindowMats = [0xffb347, 0xff9838, 0xffc870].map(c =>
+  new THREE.MeshStandardMaterial({ color: 0x20242c, emissive: c, emissiveIntensity: 1, roughness: 0.3 }));
+const darkWindowMat = new THREE.MeshStandardMaterial({ color: 0x1a2232, emissive: 0x334466, emissiveIntensity: 0.15, roughness: 0.3 });
+const spillMat = new THREE.MeshBasicMaterial({ map: glowTex, color: 0xffa94d, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+const lampGlassMat = new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0xffc070, emissiveIntensity: 1 });
+const haloMat = new THREE.SpriteMaterial({ map: glowTex, color: 0xffb860, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+
+const box = (w, h, d, mat, x = 0, y = 0, z = 0, shadow = true) => {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z); m.castShadow = shadow; m.receiveShadow = true; return m;
+};
+
+/* ---------- 집 ---------- */
+const spillGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+const smokeEmitters = [];
+const houseSpots = [];
+
+function addWindow(parent, x, y, z, ry, ww, wh, spill = true) {
+  const g = new THREE.Group();
+  g.position.set(x, y, z); g.rotation.y = ry;
+  const lit = rand() < 0.82;
+  const mat = lit ? pick(litWindowMats) : darkWindowMat;
+  g.add(box(ww + 0.18, wh + 0.18, 0.08, frameMat, 0, 0, 0, false));
+  g.add(box(ww, wh, 0.12, mat, 0, 0, 0, false));
+  g.add(box(0.05, wh, 0.15, frameMat, 0, 0, 0, false));
+  g.add(box(ww, 0.05, 0.15, frameMat, 0, 0, 0, false));
+  g.add(box(ww + 0.34, 0.1, 0.26, snowMat, 0, -wh / 2 - 0.1, 0.08, false));
+  parent.add(g);
+  if (lit && spill) {
+    const s = new THREE.Mesh(spillGeo, spillMat);
+    s.scale.set(4.2, 1, 4.2);
+    s.position.set(x + Math.sin(ry) * 1.7, 0.05 + rand() * 0.02, z + Math.cos(ry) * 1.7);
+    s.renderOrder = 2;
+    parent.add(s);
+  }
+}
+
+function makeHouse(x, z, o = {}) {
+  const w = o.w ?? rr(4.6, 6.2), d = o.d ?? rr(5, 7), h = o.h ?? rr(2.9, 3.6), rh = o.rh ?? rr(2.1, 2.9);
+  const g = new THREE.Group();
+  const wallMat = std(o.color ?? pick(wallColors));
+
+  g.add(box(w, h, d, wallMat, 0, h / 2, 0));
+  g.add(box(w + 0.25, 0.35, d + 0.25, std(0x5c5c66), 0, 0.17, 0)); // 기초
+
+  // 박공 벽
+  const shape = new THREE.Shape();
+  shape.moveTo(-w / 2, 0); shape.lineTo(w / 2, 0); shape.lineTo(0, rh); shape.closePath();
+  const gableGeo = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false });
+  gableGeo.translate(0, 0, -d / 2);
+  const gable = new THREE.Mesh(gableGeo, wallMat);
+  gable.position.y = h; gable.castShadow = true; gable.receiveShadow = true;
+  g.add(gable);
+
+  // 지붕 + 쌓인 눈
+  const L = Math.hypot(w / 2, rh), a = Math.atan2(rh, w / 2);
+  for (const sgn of [1, -1]) {
+    const cx = sgn * (w / 4 + Math.cos(a) * 0.3), cy = h + rh / 2 - Math.sin(a) * 0.3;
+    const nx = sgn * Math.sin(a), ny = Math.cos(a);
+    const under = box(L + 0.7, 0.12, d + 0.9, roofMat, cx + nx * 0.06, cy + ny * 0.06, 0);
+    under.rotation.z = -sgn * a;
+    const snow = box(L + 0.62, 0.3, d + 0.8, snowMat, cx + nx * 0.26, cy + ny * 0.26, 0);
+    snow.rotation.z = -sgn * a;
+    g.add(under, snow);
+  }
+  const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, d + 0.8, 12), snowMat);
+  ridge.rotation.x = Math.PI / 2; ridge.position.y = h + rh + 0.32; ridge.castShadow = true;
+  g.add(ridge);
+
+  // 굴뚝
+  const chx = w * 0.24, chTop = h + rh * 0.52 + 1.5, chz = -d * 0.2;
+  g.add(box(0.7, 2.2, 0.7, brickMat, chx, chTop - 1.1, chz));
+  g.add(box(0.85, 0.16, 0.85, snowMat, chx, chTop + 0.08, chz));
+
+  // 문
+  const fz = d / 2;
+  const doorX = o.doorX ?? pick([-1, 0, 1]) * w * 0.22;
+  g.add(box(1.1, 1.95, 0.1, frameMat, doorX, 1.3, fz, false));
+  g.add(box(0.92, 1.8, 0.14, pick(doorMats), doorX, 1.27, fz, false));
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), std(0xd9b65a, { metalness: 0.8, roughness: 0.3 }));
+  knob.position.set(doorX + 0.3, 1.25, fz + 0.1); g.add(knob);
+  g.add(box(1.5, 0.3, 0.8, snowMat, doorX, 0.2, fz + 0.4));
+  // 문 위 리스
+  const wreath = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.07, 8, 16), leafMat);
+  wreath.position.set(doorX, 1.75, fz + 0.1); g.add(wreath);
+  const bow = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), std(0xd02a2a));
+  bow.position.set(doorX, 1.56, fz + 0.14); g.add(bow);
+  // 문 등
+  const dl = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 10), lampGlassMat);
+  dl.position.set(doorX + 0.8, 2.25, fz + 0.12); g.add(dl);
+  const dh = new THREE.Sprite(haloMat); dh.scale.setScalar(1.6); dh.position.copy(dl.position); g.add(dh);
+  const ds = new THREE.Mesh(spillGeo, spillMat); ds.scale.set(5, 1, 5); ds.position.set(doorX, 0.06, fz + 1.8); ds.renderOrder = 2; g.add(ds);
+
+  // 창문
+  const wy = h * 0.55 + 0.15;
+  for (const sx of [-1, 0, 1]) {
+    const px = sx * w * 0.22 * (doorX === 0 ? 1.35 : 1);
+    if (Math.abs(px - doorX) > 0.9 && (sx !== 0 || doorX !== 0)) addWindow(g, px, wy, fz, 0, 0.85, 1.0);
+  }
+  addWindow(g, 0, h + rh * 0.38, fz, 0, 0.6, 0.6, false);           // 다락 창 (앞)
+  addWindow(g, 0, h + rh * 0.38, -fz, Math.PI, 0.6, 0.6, false);    // 다락 창 (뒤)
+  for (const sz of [-1, 1]) {
+    addWindow(g, w / 2, wy, sz * d * 0.23, Math.PI / 2, 0.85, 1.0);
+    addWindow(g, -w / 2, wy, sz * d * 0.23, -Math.PI / 2, 0.85, 1.0);
+    addWindow(g, sz * w * 0.22, wy, -fz, Math.PI, 0.85, 1.0);
+  }
+
+  g.position.set(x, 0, z);
+  g.rotation.y = Math.atan2(-x, -z) + rr(-0.18, 0.18);
+  scene.add(g);
+  houseSpots.push({ x, z, r: Math.max(w, d) * 0.5 + 2.2 });
+
+  g.updateMatrixWorld(true);
+  smokeEmitters.push(new THREE.Vector3(chx, chTop + 0.2, chz).applyMatrix4(g.matrixWorld));
+}
+
+// 안쪽 원 5채, 바깥 원 7채
+for (let i = 0; i < 5; i++) {
+  const a = (i / 5) * Math.PI * 2 + 0.3;
+  makeHouse(Math.sin(a) * 14.5, Math.cos(a) * 14.5);
+}
+for (let i = 0; i < 7; i++) {
+  const a = (i / 7) * Math.PI * 2 + 0.75 + rr(-0.06, 0.06);
+  const r = rr(24.5, 27);
+  makeHouse(Math.sin(a) * r, Math.cos(a) * r, i === 3 ? { w: 6.6, d: 7.6, h: 4.4, rh: 3.4, color: 0xd8c9a8 } : {});
+}
+
+/* ---------- 나무 ---------- */
+const coneGeo = new THREE.ConeGeometry(1, 1, 9);
+const trunkGeo = new THREE.CylinderGeometry(0.16, 0.22, 1, 6);
+function pine(x, z, s) {
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(trunkGeo, woodMat);
+  trunk.scale.set(1, 1.2, 1); trunk.position.y = 0.6; trunk.castShadow = true; g.add(trunk);
+  const tiers = [[1.55, 2.0, 1.9], [1.2, 1.8, 3.0], [0.82, 1.6, 4.0]];
+  for (const [r, h, y] of tiers) {
+    const c = new THREE.Mesh(coneGeo, leafMat);
+    c.scale.set(r, h, r); c.position.y = y; c.castShadow = true; c.receiveShadow = true; g.add(c);
+    const sn = new THREE.Mesh(coneGeo, snowMat);
+    sn.scale.set(r * 0.8, h * 0.68, r * 0.8); sn.position.y = y + h / 2 + 0.03 - h * 0.34; sn.castShadow = true; g.add(sn);
+  }
+  g.position.set(x, groundH(x, z) - 0.05, z);
+  g.scale.setScalar(s); g.rotation.y = rand() * 6.28;
+  scene.add(g);
+}
+const POND = { x: -4.6, z: 4.4, r: 3.3 };
+let placed = 0, guard = 0;
+while (placed < 95 && guard++ < 4000) {
+  const a = rand() * Math.PI * 2, r = 9.5 + Math.pow(rand(), 0.8) * 75;
+  const x = Math.sin(a) * r, z = Math.cos(a) * r;
+  if (houseSpots.some(hs => Math.hypot(hs.x - x, hs.z - z) < hs.r + 1.3)) continue;
+  if (Math.hypot(POND.x - x, POND.z - z) < POND.r + 2.5) continue;
+  if (r < 31 && rand() < 0.55) continue; // 마을 안은 듬성듬성
+  pine(x, z, rr(0.75, 1.5) * (r > 40 ? 1.25 : 1));
+  placed++;
+}
+
+/* ---------- 광장: 큰 트리 ---------- */
+const bulbMats = [0xff4a4a, 0xffd24a, 0x4ac8ff, 0x6dff7a, 0xff7ae0].map(c => ({ base: new THREE.Color(c), mat: new THREE.MeshBasicMaterial({ color: c }) }));
+{
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(trunkGeo, woodMat); trunk.scale.set(2.2, 1.6, 2.2); trunk.position.y = 0.8; trunk.castShadow = true; g.add(trunk);
+  const tiers = [[3.0, 3.2, 2.7], [2.4, 2.9, 4.5], [1.8, 2.6, 6.2], [1.15, 2.3, 7.8]];
+  const bulbGeo = new THREE.SphereGeometry(0.11, 8, 8);
+  for (const [r, h, y] of tiers) {
+    const c = new THREE.Mesh(coneGeo, leafMat); c.scale.set(r, h, r); c.position.y = y; c.castShadow = true; g.add(c);
+    const sn = new THREE.Mesh(coneGeo, snowMat); sn.scale.set(r * 0.72, h * 0.55, r * 0.72); sn.position.y = y + h / 2 + 0.03 - h * 0.275; g.add(sn);
+    const n = Math.round(r * 7);
+    for (let i = 0; i < n; i++) {
+      const f = rr(0.05, 0.5), th = (i / n) * Math.PI * 2 + rand() * 0.4, rad = r * (1 - f) * 1.04;
+      const b = new THREE.Mesh(bulbGeo, pick(bulbMats).mat);
+      b.position.set(Math.cos(th) * rad, y - h / 2 + f * h, Math.sin(th) * rad);
+      g.add(b);
+    }
+  }
+  const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.42), new THREE.MeshBasicMaterial({ color: 0xffe27a }));
+  star.position.y = 9.35; star.scale.set(1, 1.5, 0.5); g.add(star);
+  const sh = new THREE.Sprite(haloMat); sh.scale.setScalar(4); sh.position.y = 9.35; g.add(sh);
+  scene.add(g);
+}
+const treeLight = new THREE.PointLight(0xffd9a0, 1, 22, 2);
+treeLight.position.set(0, 4.5, 0);
+scene.add(treeLight);
+
+/* ---------- 가로등 ---------- */
+const lampLights = [];
+function streetLamp(x, z) {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 3.3, 8), metalMat);
+  pole.position.y = 1.65; pole.castShadow = true; g.add(pole);
+  g.add(box(0.36, 0.46, 0.36, lampGlassMat, 0, 3.5, 0, false));
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.26, 4), metalMat); cap.position.y = 3.86; cap.rotation.y = Math.PI / 4; g.add(cap);
+  const sn = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.2, 4), snowMat); sn.position.y = 3.95; sn.rotation.y = Math.PI / 4; g.add(sn);
+  const halo = new THREE.Sprite(haloMat); halo.scale.setScalar(3.4); halo.position.y = 3.5; g.add(halo);
+  const sp = new THREE.Mesh(spillGeo, spillMat); sp.scale.set(9, 1, 9); sp.position.y = 0.07; sp.renderOrder = 2; g.add(sp);
+  const l = new THREE.PointLight(0xffc27a, 1, 17, 2); l.position.y = 3.5; g.add(l); lampLights.push(l);
+  g.position.set(x, 0, z);
+  scene.add(g);
+}
+for (let i = 0; i < 5; i++) {
+  const a = (i / 5) * Math.PI * 2 + 0.3 + Math.PI / 5;
+  streetLamp(Math.sin(a) * 9.2, Math.cos(a) * 9.2);
+}
+streetLamp(19.5, 3); streetLamp(-18, -9.5);
+
+/* ---------- 연못 ---------- */
+{
+  const ice = new THREE.Mesh(new THREE.CircleGeometry(POND.r, 48).rotateX(-Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x9fc6e0, roughness: 0.12, metalness: 0.35 }));
+  ice.position.set(POND.x, 0.04, POND.z); ice.receiveShadow = true; scene.add(ice);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(POND.r + 0.15, 0.32, 8, 48).rotateX(Math.PI / 2), snowMat);
+  rim.position.set(POND.x, 0.02, POND.z); rim.scale.y = 0.6; rim.receiveShadow = true; scene.add(rim);
+}
+
+/* ---------- 눈사람 ---------- */
+function snowman(x, z, ry) {
+  const g = new THREE.Group();
+  const ball = (r, y) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 14), snowMat); m.position.y = y; m.castShadow = true; g.add(m); };
+  ball(0.75, 0.62); ball(0.54, 1.62); ball(0.38, 2.36);
+  const coal = std(0x111111);
+  for (const sx of [-1, 1]) {
+    const e = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), coal); e.position.set(sx * 0.14, 2.45, 0.34); g.add(e);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.95, 5), woodMat);
+    arm.position.set(sx * 0.82, 1.82, 0); arm.rotation.z = -sx * 1.05; arm.castShadow = true; g.add(arm);
+  }
+  for (const by of [1.5, 1.72, 1.94]) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), coal); b.position.set(0, by, 0.52 - Math.abs(by - 1.62) * 0.25); g.add(b); }
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.34, 8), std(0xff7a1a)); nose.rotation.x = Math.PI / 2; nose.position.set(0, 2.36, 0.52); g.add(nose);
+  const hatMat = std(0x1c1c22);
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 20), hatMat); brim.position.y = 2.68; g.add(brim);
+  const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.42, 20), hatMat); hat.position.y = 2.9; hat.castShadow = true; g.add(hat);
+  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.085, 8, 20).rotateX(Math.PI / 2), std(0xc22b2b)); scarf.position.y = 2.06; g.add(scarf);
+  g.position.set(x, 0, z); g.rotation.y = ry;
+  scene.add(g);
+}
+snowman(4.6, 4.2, 0.6);
+snowman(-10.5, -3.5, -1.2);
+
+/* ---------- 굴뚝 연기 ---------- */
+const puffs = [];
+for (const origin of smokeEmitters) {
+  for (let i = 0; i < 6; i++) {
+    const mat = new THREE.SpriteMaterial({ map: softTex, transparent: true, depthWrite: false, opacity: 0 });
+    const s = new THREE.Sprite(mat);
+    scene.add(s);
+    puffs.push({ s, mat, origin, phase: i / 6 + rand() * 0.1, drift: rr(0.5, 1.1), wob: rand() * 6.28 });
+  }
+}
+
+/* ---------- 내리는 눈 ---------- */
+const SNOW_N = 11000, SNOW_H = 48, SNOW_W = 140;
+const sp = new Float32Array(SNOW_N * 3), ss = new Float32Array(SNOW_N * 3);
+for (let i = 0; i < SNOW_N; i++) {
+  sp[i * 3] = rr(-SNOW_W / 2, SNOW_W / 2); sp[i * 3 + 1] = rr(0, SNOW_H); sp[i * 3 + 2] = rr(-SNOW_W / 2, SNOW_W / 2);
+  ss[i * 3] = rr(1.6, 4.2); ss[i * 3 + 1] = rand() * 6.28; ss[i * 3 + 2] = rr(0.6, 1.5);
+}
+const snowGeo = new THREE.BufferGeometry();
+snowGeo.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+snowGeo.setAttribute('aSeed', new THREE.BufferAttribute(ss, 3));
+const snowPts = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false,
+  uniforms: { uTime: { value: 0 }, uScale: { value: 1 }, uColor: { value: new THREE.Color(0xffffff) }, uOpacity: { value: 0.9 } },
+  vertexShader: `
+    uniform float uTime; uniform float uScale; attribute vec3 aSeed; varying float vFade;
+    void main(){
+      vec3 p = position;
+      p.y = mod(p.y - uTime * aSeed.x, ${SNOW_H.toFixed(1)}) - 0.5;
+      p.x += sin(uTime * 0.6 + aSeed.y) * 0.9 + uTime * 0.35;
+      p.z += cos(uTime * 0.45 + aSeed.y * 1.7) * 0.9;
+      p.x = mod(p.x + ${(SNOW_W / 2).toFixed(1)}, ${SNOW_W.toFixed(1)}) - ${(SNOW_W / 2).toFixed(1)};
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      gl_Position = projectionMatrix * mv;
+      gl_PointSize = clamp(aSeed.z * uScale * 0.2 / -mv.z, 1.0, 40.0);
+      vFade = smoothstep(120.0, 60.0, -mv.z) * smoothstep(0.3, 2.0, -mv.z);
+    }`,
+  fragmentShader: `
+    uniform vec3 uColor; uniform float uOpacity; varying float vFade;
+    void main(){
+      float d = length(gl_PointCoord - 0.5);
+      float a = smoothstep(0.5, 0.12, d) * uOpacity * vFade;
+      if (a < 0.01) discard;
+      gl_FragColor = vec4(uColor, a);
+    }`
+});
+const snowfall = new THREE.Points(snowGeo, snowPts);
+snowfall.frustumCulled = false;
+snowfall.renderOrder = 5;
+scene.add(snowfall);
+
+/* ---------- 낮/밤 ---------- */
+const C = h => new THREE.Color(h);
+const NIGHT = { top: C(0x040817), bottom: C(0x1b2947), fog: C(0x16223d), hemiSky: C(0x5870b0), hemiGnd: C(0x232a40), dir: C(0x9db6ff), glass: C(0x20242c), smoke: C(0x8f9ab5), flake: C(0xdfe8ff) };
+const DAY = { top: C(0x6f9bd0), bottom: C(0xdbe6f2), fog: C(0xd3deeb), hemiSky: C(0xdcebff), hemiGnd: C(0xbfc8d6), dir: C(0xfff0d8), glass: C(0x6b86a3), smoke: C(0xffffff), flake: C(0xffffff) };
+const lerp = (a, b, t) => a + (b - a) * t;
+let night = 1, target = 1;
+
+function applyTime(k, time) { // k: 1 = 밤, 0 = 낮
+  skyMat.uniforms.top.value.lerpColors(DAY.top, NIGHT.top, k);
+  skyMat.uniforms.bottom.value.lerpColors(DAY.bottom, NIGHT.bottom, k);
+  scene.fog.color.lerpColors(DAY.fog, NIGHT.fog, k);
+  scene.fog.density = lerp(0.0085, 0.012, k);
+  hemi.color.lerpColors(DAY.hemiSky, NIGHT.hemiSky, k);
+  hemi.groundColor.lerpColors(DAY.hemiGnd, NIGHT.hemiGnd, k);
+  hemi.intensity = lerp(1.25, 0.75, k);
+  dirLight.color.lerpColors(DAY.dir, NIGHT.dir, k);
+  dirLight.intensity = lerp(2.3, 0.75, k);
+  dirLight.position.lerpVectors(SUN_DIR, MOON_DIR, k).normalize().multiplyScalar(100);
+  renderer.toneMappingExposure = lerp(0.95, 1.1, k);
+
+  starMat.opacity = Math.max(0, k * 1.4 - 0.4);
+  moon.mat.opacity = k; moon.hmat.opacity = k * 0.55;
+  sun.mat.opacity = (1 - k) * 0.9; sun.hmat.opacity = (1 - k) * 0.6;
+
+  const glow = smooth(0.25, 0.9, k);
+  litWindowMats.forEach((m, i) => {
+    m.emissiveIntensity = glow * (1.35 + 0.1 * Math.sin(time * (1.3 + i * 0.7) + i * 2.1));
+    m.color.lerpColors(DAY.glass, NIGHT.glass, k);
+  });
+  darkWindowMat.color.lerpColors(DAY.glass, NIGHT.glass, k);
+  spillMat.opacity = glow * 0.5;
+  haloMat.opacity = glow * 0.85;
+  lampGlassMat.emissiveIntensity = glow * 2.6;
+  lampLights.forEach(l => l.intensity = glow * 42);
+  treeLight.intensity = glow * 55;
+
+  bulbMats.forEach((b, i) => {
+    const blink = 0.55 + 0.45 * Math.sin(time * 2.2 + i * 1.9);
+    b.mat.color.copy(b.base).multiplyScalar(lerp(0.55, 0.35 + 1.1 * blink, glow));
+  });
+
+  snowPts.uniforms.uColor.value.lerpColors(DAY.flake, NIGHT.flake, k);
+  snowPts.uniforms.uOpacity.value = lerp(0.95, 0.85, k);
+
+  for (const p of puffs) {
+    const t = (time * 0.11 * p.drift + p.phase) % 1;
+    p.s.position.set(
+      p.origin.x + t * 2.6 + Math.sin(time * 0.7 + p.wob) * 0.25 * t,
+      p.origin.y + t * 5.2,
+      p.origin.z + Math.cos(time * 0.6 + p.wob) * 0.3 * t);
+    p.s.scale.setScalar(0.6 + t * 2.6);
+    p.mat.opacity = Math.sin(Math.PI * Math.min(1, t * 1.05)) * lerp(0.5, 0.28, k);
+    p.mat.color.lerpColors(DAY.smoke, NIGHT.smoke, k);
+  }
+}
+
+const btn = document.getElementById('toggle');
+btn.addEventListener('click', () => {
+  target = target === 1 ? 0 : 1;
+  btn.textContent = target === 1 ? '☀️ 낮으로 바꾸기' : '🌙 밤으로 바꾸기';
+});
+
+/* ---------- 루프 ---------- */
+function resize() {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  snowPts.uniforms.uScale.value = innerHeight * renderer.getPixelRatio();
+}
+addEventListener('resize', resize);
+resize();
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.1), time = clock.elapsedTime;
+  night += (target - night) * (1 - Math.exp(-dt * 2.2));
+  if (Math.abs(target - night) < 0.001) night = target;
+  snowPts.uniforms.uTime.value = time;
+  applyTime(night, time);
+  controls.update();
+  renderer.render(scene, camera);
+});
+if (location.hash === '#day') { night = target = 0; btn.textContent = '🌙 밤으로 바꾸기'; } // index.html#day 로 열면 낮에서 시작
+</script>
+</body>
+</html>

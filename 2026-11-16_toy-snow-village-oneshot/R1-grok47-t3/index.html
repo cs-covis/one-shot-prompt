@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>눈 내리는 마을</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@700&family=IBM+Plex+Sans+KR:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #f6f1e6;
+      --amber: #f0a35a;
+      --amber-ink: #2a1408;
+      --night-ink: #14243c;
+      --day-paper: #f3efe4;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #070b14; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+    #vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 42%, rgba(5, 8, 18, 0.55) 100%);
+      transition: opacity 1.2s ease;
+    }
+    body.is-day #vignette { opacity: 0.28; }
+    header {
+      position: fixed;
+      left: 28px;
+      bottom: 26px;
+      z-index: 2;
+      color: var(--ink);
+      text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+    }
+    h1 {
+      margin: 0;
+      font-family: "Gowun Batang", Batang, "Times New Roman", serif;
+      font-size: 42px;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+    }
+    #hint {
+      position: fixed;
+      left: 50%;
+      bottom: 32px;
+      transform: translateX(-50%);
+      margin: 0;
+      z-index: 2;
+      color: var(--ink);
+      font-family: "IBM Plex Sans KR", "Malgun Gothic", sans-serif;
+      font-size: 14px;
+      letter-spacing: -0.01em;
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
+      transition: opacity 0.6s ease;
+      pointer-events: none;
+      text-align: center;
+    }
+    #hint.is-gone { opacity: 0; }
+    #cycle {
+      position: fixed;
+      right: 28px;
+      bottom: 26px;
+      z-index: 2;
+      border: 0;
+      cursor: pointer;
+      font-family: "IBM Plex Sans KR", "Malgun Gothic", sans-serif;
+      font-size: 16px;
+      font-weight: 500;
+      padding: 14px 22px;
+      border-radius: 999px;
+      background: var(--amber);
+      color: var(--amber-ink);
+      box-shadow: 0 0 0 7px rgba(240, 163, 90, 0.16), 0 12px 28px rgba(0, 0, 0, 0.35);
+    }
+    body.is-day #cycle {
+      background: var(--night-ink);
+      color: var(--day-paper);
+      box-shadow: 0 0 0 7px rgba(20, 36, 60, 0.12), 0 12px 28px rgba(40, 50, 70, 0.25);
+    }
+    #cycle:hover { filter: brightness(1.06); }
+    #cycle:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+    #err {
+      position: fixed;
+      left: 50%;
+      top: 24px;
+      transform: translateX(-50%);
+      z-index: 3;
+      margin: 0;
+      padding: 12px 16px;
+      background: #3a1212;
+      color: #fff;
+      font-family: "IBM Plex Sans KR", "Malgun Gothic", sans-serif;
+      border-radius: 10px;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      border: 0;
+    }
+    @media (max-width: 720px) {
+      h1 { font-size: 28px; }
+      header { left: 16px; right: 168px; bottom: 20px; }
+      #hint {
+        left: 16px;
+        right: 16px;
+        bottom: 76px;
+        transform: none;
+        text-align: left;
+      }
+      #cycle { right: 16px; bottom: 16px; padding: 12px 16px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #vignette, #hint { transition: none; }
+    }
+  </style>
+</head>
+<body class="is-night">
+  <canvas id="view"></canvas>
+  <div id="vignette"></div>
+  <header>
+    <h1>눈 내리는 마을</h1>
+  </header>
+  <p id="hint">드래그해서 둘러보세요. 휠로 가까이 갑니다.</p>
+  <button id="cycle" type="button" aria-pressed="true">낮으로 바꾸기</button>
+  <p id="sky-state" class="sr-only" aria-live="polite">지금 밤입니다. 창에 불이 켜져 있습니다.</p>
+  <p id="err" hidden></p>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+    const rand = mulberry32(20261116);
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const canvas = document.getElementById("view");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.78;
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x0b1428, 0.03);
+
+    const camera = new THREE.PerspectiveCamera(46, window.innerWidth / window.innerHeight, 0.1, 240);
+    camera.position.set(24, 7.6, 26);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.target.set(0, 2.2, 0);
+    controls.enableDamping = !reduceMotion;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 7;
+    controls.maxDistance = 46;
+    controls.minPolarAngle = 0.28;
+    controls.maxPolarAngle = Math.PI * 0.47;
+    controls.enablePan = false;
+    controls.autoRotate = !reduceMotion;
+    controls.autoRotateSpeed = 0.28;
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.ROTATE
+    };
+    controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+    controls.update();
+
+    const hemi = new THREE.HemisphereLight(0x1a2c4e, 0x2a3340, 0.35);
+    scene.add(hemi);
+
+    const sun = new THREE.DirectionalLight(0xb7c6e6, 0.18);
+    sun.position.set(-40, 36, -28);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 140;
+    sun.shadow.camera.left = -32;
+    sun.shadow.camera.right = 32;
+    sun.shadow.camera.top = 32;
+    sun.shadow.camera.bottom = -32;
+    sun.shadow.bias = -0.00025;
+    sun.shadow.normalBias = 0.035;
+    scene.add(sun);
+    scene.add(sun.target);
+
+    const lampLights = [];
+    let treeLight;
+
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(160, 32, 20),
+      new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        depthWrite: false,
+        uniforms: {
+          night: { value: 1 },
+          zenithDay: { value: new THREE.Color("#7ea4c4") },
+          horizonDay: { value: new THREE.Color("#f4efe4") },
+          zenithNight: { value: new THREE.Color("#050814") },
+          horizonNight: { value: new THREE.Color("#24385f") }
+        },
+        vertexShader: `
+          varying vec3 vPos;
+          void main() {
+            vPos = position;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vPos;
+          uniform float night;
+          uniform vec3 zenithDay, horizonDay, zenithNight, horizonNight;
+          void main() {
+            float h = normalize(vPos).y;
+            float t = smoothstep(-0.08, 0.72, h);
+            vec3 dayC = mix(horizonDay, zenithDay, t);
+            vec3 nightC = mix(horizonNight, zenithNight, t);
+            gl_FragColor = vec4(mix(dayC, nightC, night), 1.0);
+          }
+        `
+      })
+    );
+    scene.add(sky);
+
+    const starPositions = [];
+    for (let i = 0; i < 700; i++) {
+      const y = 0.15 + rand() * 0.85;
+      const ring = Math.sqrt(Math.max(0, 1 - y * y));
+      const a = rand() * Math.PI * 2;
+      const radius = 120;
+      starPositions.push(Math.cos(a) * ring * radius, y * radius, Math.sin(a) * ring * radius);
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute("position", new THREE.Float32BufferAttribute(starPositions, 3));
+    const starMat = new THREE.PointsMaterial({
+      color: 0xfff6e4,
+      size: 1.15,
+      sizeAttenuation: false,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false
+    });
+    scene.add(new THREE.Points(starGeo, starMat));
+
+    function discTexture() {
+      const c = document.createElement("canvas");
+      c.width = c.height = 128;
+      const g = c.getContext("2d");
+      const grd = g.createRadialGradient(64, 64, 8, 64, 64, 64);
+      grd.addColorStop(0, "rgba(255,255,255,1)");
+      grd.addColorStop(0.35, "rgba(255,255,255,0.65)");
+      grd.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = grd;
+      g.fillRect(0, 0, 128, 128);
+      const tex = new THREE.CanvasTexture(c);
+      return tex;
+    }
+    const discMap = discTexture();
+
+    const moon = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: discMap,
+      color: 0xfff4d2,
+      transparent: true,
+      opacity: 1,
+      depthWrite: false,
+      fog: false,
+      toneMapped: false
+    }));
+    moon.scale.set(10, 10, 1);
+    moon.position.set(-34, 22, -38);
+    scene.add(moon);
+
+    const sunDisc = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: discMap,
+      color: 0xfff2c8,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false,
+      toneMapped: false
+    }));
+    sunDisc.scale.set(12, 12, 1);
+    sunDisc.position.set(28, 20, -18);
+    scene.add(sunDisc);
+
+    const snowTex = makeSnowTexture();
+    const snowMat = new THREE.MeshStandardMaterial({
+      map: snowTex,
+      color: 0xf4f7fb,
+      roughness: 0.94,
+      metalness: 0
+    });
+    const roofSnowMat = new THREE.MeshStandardMaterial({
+      color: 0xf7fbff,
+      roughness: 0.82,
+      metalness: 0,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
+    });
+    const pathMat = new THREE.MeshStandardMaterial({ color: 0xc5d0dc, roughness: 1, metalness: 0 });
+    const iceMat = new THREE.MeshStandardMaterial({
+      color: 0xb7d4e2,
+      roughness: 0.12,
+      metalness: 0.08,
+      transparent: true,
+      opacity: 0.92
+    });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x2a211c, roughness: 0.6 });
+    const windowLitMat = new THREE.MeshStandardMaterial({
+      color: 0x3a2a18,
+      emissive: new THREE.Color(0xffb15a),
+      emissiveIntensity: 1.9,
+      roughness: 0.28,
+      toneMapped: false
+    });
+    const windowDarkMat = new THREE.MeshStandardMaterial({
+      color: 0x14110e,
+      emissive: new THREE.Color(0x1a120c),
+      emissiveIntensity: 0.15,
+      roughness: 0.5
+    });
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0x4a2c1a, roughness: 0.78 });
+    const knobMat = new THREE.MeshStandardMaterial({ color: 0xd7b56a, metalness: 0.6, roughness: 0.32 });
+    const beamMat = new THREE.MeshStandardMaterial({ color: 0x5a3b28, roughness: 0.8 });
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0xb7b1a6, roughness: 0.95 });
+    const stoneDarkMat = new THREE.MeshStandardMaterial({ color: 0x8d877e, roughness: 0.96 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3428, roughness: 0.9 });
+    const pineMat = new THREE.MeshStandardMaterial({ color: 0x1c3b2e, roughness: 0.86 });
+    const pineMat2 = new THREE.MeshStandardMaterial({ color: 0x254838, roughness: 0.86 });
+    const lampPostMat = new THREE.MeshStandardMaterial({ color: 0x2c3138, roughness: 0.45, metalness: 0.35 });
+    const lanternMat = new THREE.MeshStandardMaterial({
+      color: 0xffc27a,
+      emissive: new THREE.Color(0xffb15a),
+      emissiveIntensity: 1.6,
+      roughness: 0.3,
+      toneMapped: false
+    });
+    const smokeTex = discMap;
+    const baubleMats = [0xc4382f, 0xe6b15a, 0xf4f1ea, 0x2f6f62].map((hex) => new THREE.MeshStandardMaterial({
+      color: hex,
+      emissive: new THREE.Color(hex),
+      emissiveIntensity: 0.7,
+      roughness: 0.35,
+      metalness: 0.15,
+      toneMapped: false
+    }));
+
+    const glowMat = new THREE.MeshBasicMaterial({
+      map: discMap,
+      color: 0xffb15a,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+      side: THREE.DoubleSide
+    });
+
+    const wallCache = new Map();
+    const roofCache = new Map();
+    function cachedStandard(cache, hex, extra) {
+      const key = String(hex);
+      if (cache.has(key)) return cache.get(key);
+      const mat = new THREE.MeshStandardMaterial(Object.assign({ color: hex }, extra));
+      cache.set(key, mat);
+      return mat;
+    }
+    const wallMat = (hex) => cachedStandard(wallCache, hex, { roughness: 0.93, metalness: 0.02 });
+    const roofMat = (hex) => cachedStandard(roofCache, hex, { roughness: 0.74, metalness: 0.05, side: THREE.DoubleSide });
+
+    const ground = buildGround();
+    scene.add(ground);
+
+    const KINDS = {
+      cottage: { w: 3.5, d: 2.9, h: 2.45, wall: 0xf3e2c8, roof: 0x7a2e38, cols: 2, rows: 2, side: 1 },
+      timber: { w: 4.15, d: 3.15, h: 2.7, wall: 0xf4ecdc, roof: 0x243833, cols: 3, rows: 2, side: 2, beams: true },
+      stone: { w: 3.7, d: 3.25, h: 2.55, wall: 0xc9c3b8, roof: 0x4c433c, cols: 2, rows: 2, side: 1, stone: true },
+      tall: { w: 3.05, d: 2.95, h: 3.65, wall: 0xf7efe3, roof: 0x8a4532, cols: 2, rows: 3, side: 2 },
+      small: { w: 2.65, d: 2.35, h: 2.15, wall: 0xf2d5bf, roof: 0x5c2a3a, cols: 2, rows: 1, side: 1 },
+      chapel: { w: 3.9, d: 5.3, h: 3.45, wall: 0xe8e1d4, roof: 0x2a3344, cols: 2, rows: 2, side: 3, chapel: true }
+    };
+
+    const plotSpecs = [
+      { ang: 0.15, r: 11.2, kind: "cottage" },
+      { ang: 0.75, r: 12.7, kind: "timber" },
+      { ang: 1.32, r: 11.0, kind: "stone" },
+      { ang: 1.95, r: 13.1, kind: "tall" },
+      { ang: 2.55, r: 11.5, kind: "cottage" },
+      { ang: 3.15, r: 12.3, kind: "small" },
+      { ang: 3.9, r: 14.0, kind: "chapel" },
+      { ang: 4.68, r: 11.4, kind: "timber" },
+      { ang: 5.28, r: 12.7, kind: "stone" },
+      { ang: 5.85, r: 11.0, kind: "cottage" },
+      { ang: 2.15, r: 8.1, kind: "small" },
+      { ang: 4.25, r: 8.4, kind: "small" }
+    ];
+
+    const plots = [];
+    const houses = [];
+    let facingMin = 1;
+    const frameGeo = new THREE.BoxGeometry(0.64, 0.8, 0.07);
+    const paneGeo = new THREE.BoxGeometry(0.46, 0.6, 0.03);
+    const mullVGeo = new THREE.BoxGeometry(0.04, 0.6, 0.045);
+    const mullHGeo = new THREE.BoxGeometry(0.46, 0.04, 0.045);
+    const glowGeo = new THREE.PlaneGeometry(0.95, 1.15);
+    const doorGeo = new THREE.BoxGeometry(0.74, 1.28, 0.08);
+    const knobGeo = new THREE.SphereGeometry(0.045, 10, 8);
+    const stepGeo = new THREE.BoxGeometry(1.15, 0.1, 0.48);
+    const postGeo = new THREE.BoxGeometry(0.12, 1, 0.12);
+    const icicleGeo = new THREE.ConeGeometry(0.07, 0.42, 5);
+    icicleGeo.rotateX(Math.PI);
+    icicleGeo.translate(0, -0.21, 0);
+
+    for (const spec of plotSpecs) {
+      const x = Math.cos(spec.ang) * spec.r;
+      const z = Math.sin(spec.ang) * spec.r;
+      const jitter = (rand() - 0.5) * 0.2;
+      // Local -z is the door. yaw = atan2(x, z) points -z at the origin
+      // (yaw 0: -z is world -z; house on +z faces the square).
+      const yaw = Math.atan2(x, z) + jitter;
+      const house = buildHouse(KINDS[spec.kind], rand);
+      house.position.set(x, 0, z);
+      house.rotation.y = yaw;
+      scene.add(house);
+      houses.push(house);
+      plots.push({ x, z, kind: spec.kind });
+
+      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(house.quaternion);
+      const toOrigin = new THREE.Vector3(-x, 0, -z).normalize();
+      facingMin = Math.min(facingMin, fwd.dot(toOrigin));
+    }
+
+    buildSquare();
+    const treeCount = scatterPines();
+    scatterRocks();
+    buildSnowman();
+    const lampCount = buildLamps();
+
+    const snowLayers = buildSnow();
+    const smokes = collectSmoke();
+
+    let nightTarget = 1;
+    let nightNow = 1;
+    const clock = new THREE.Clock();
+    let hinted = false;
+    const hint = document.getElementById("hint");
+    controls.addEventListener("start", () => {
+      controls.autoRotate = false;
+      if (!hinted) {
+        hinted = true;
+        hint.classList.add("is-gone");
+      }
+    });
+    controls.addEventListener("end", () => {
+      if (!reduceMotion) controls.autoRotate = true;
+    });
+
+    const cycleBtn = document.getElementById("cycle");
+    const skyState = document.getElementById("sky-state");
+    cycleBtn.addEventListener("click", () => {
+      nightTarget = nightTarget > 0.5 ? 0 : 1;
+      const toNight = nightTarget > 0.5;
+      cycleBtn.textContent = toNight ? "낮으로 바꾸기" : "밤으로 바꾸기";
+      cycleBtn.setAttribute("aria-pressed", toNight ? "true" : "false");
+      skyState.textContent = toNight
+        ? "지금 밤입니다. 창에 불이 켜져 있습니다."
+        : "지금 낮입니다. 창불이 약해졌습니다.";
+    });
+
+    const fogNight = new THREE.Color("#0b1428");
+    const fogDay = new THREE.Color("#d5e4ee");
+    const hemiSkyN = new THREE.Color("#1a2c4e");
+    const hemiSkyD = new THREE.Color("#c5d7e8");
+    const hemiGroundN = new THREE.Color("#243040");
+    const hemiGroundD = new THREE.Color("#8d9aaa");
+    const sunColorN = new THREE.Color("#b7c6e6");
+    const sunColorD = new THREE.Color("#fff1d4");
+    const sunPosN = new THREE.Vector3(-34, 22, -38);
+    const sunPosD = new THREE.Vector3(28, 20, -18);
+    let snowY0 = null;
+    let snowMoved = 0;
+
+    function frame(nowNight) {
+      const k = nowNight;
+      sky.material.uniforms.night.value = k;
+      scene.fog.color.copy(fogDay).lerp(fogNight, k);
+      scene.fog.density = 0.012 + 0.02 * k;
+      hemi.color.copy(hemiSkyD).lerp(hemiSkyN, k);
+      hemi.groundColor.copy(hemiGroundD).lerp(hemiGroundN, k);
+      hemi.intensity = 0.55 + (0.28 - 0.55) * k;
+      sun.color.copy(sunColorD).lerp(sunColorN, k);
+      sun.intensity = 1.35 + (0.16 - 1.35) * k;
+      sun.position.copy(sunPosD).lerp(sunPosN, k);
+      renderer.toneMappingExposure = 1.05 + (0.76 - 1.05) * k;
+      starMat.opacity = 0.95 * k;
+      moon.material.opacity = k;
+      sunDisc.material.opacity = (1 - k) * 0.95;
+      const flick = 0.9 + Math.sin(clock.elapsedTime * 2.4) * 0.05 + Math.sin(clock.elapsedTime * 5.1) * 0.03;
+      windowLitMat.emissiveIntensity = (0.08 + 1.45 * k) * flick;
+      glowMat.opacity = (0.015 + 0.36 * k) * flick;
+      lanternMat.emissiveIntensity = (0.05 + 1.7 * k) * flick;
+      for (const light of lampLights) light.intensity = (0.02 + 2.15 * k) * flick;
+      if (treeLight) treeLight.intensity = (0.02 + 1.35 * k) * flick;
+      for (const mat of baubleMats) mat.emissiveIntensity = 0.05 + 0.85 * k;
+      document.body.classList.toggle("is-night", k > 0.5);
+      document.body.classList.toggle("is-day", k <= 0.5);
+    }
+
+    function animate() {
+      const dt = Math.min(clock.getDelta(), 0.05);
+      nightNow += (nightTarget - nightNow) * (1 - Math.pow(0.045, dt));
+      if (Math.abs(nightTarget - nightNow) < 0.001) nightNow = nightTarget;
+      frame(nightNow);
+      driftSnow(dt);
+      driftSmoke(dt);
+      controls.update();
+      renderer.render(scene, camera);
+      if (snowY0 === null) snowY0 = snowLayers[0].positions[1];
+      else snowMoved = Math.max(snowMoved, Math.abs(snowLayers[0].positions[1] - snowY0));
+      requestAnimationFrame(animate);
+    }
+
+    window.__village = {
+      houses: houses.length,
+      trees: treeCount,
+      lamps: lampCount,
+      facingMin: facingMin,
+      getCamera() {
+        return { x: camera.position.x, y: camera.position.y, z: camera.position.z };
+      },
+      get night() { return nightNow; },
+      get nightTarget() { return nightTarget; },
+      get snowMoved() { return snowMoved; },
+      setNight(v) { nightTarget = v; }
+    };
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    frame(1);
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+
+    function buildGround() {
+      const geo = new THREE.PlaneGeometry(100, 100, 90, 90);
+      geo.rotateX(-Math.PI / 2);
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const z = pos.getZ(i);
+        pos.setY(i, groundHeight(x, z));
+      }
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, snowMat);
+      mesh.receiveShadow = true;
+      return mesh;
+    }
+
+    function groundHeight(x, z) {
+      const dist = Math.hypot(x, z);
+      const n = Math.sin(x * 0.17) * Math.cos(z * 0.15) * 0.8 + Math.sin(x * 0.05 + z * 0.04) * 1.1;
+      const hill = smoothstep(16.5, 36, dist);
+      const bowl = smoothstep(34, 48, dist) * 2.2;
+      return hill * (1.6 + n) + bowl;
+    }
+
+    function buildHouse(kind, rng) {
+      const g = new THREE.Group();
+      const { w, d, h } = kind;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat(kind.wall));
+      body.position.y = h / 2;
+      body.castShadow = true;
+      body.receiveShadow = true;
+      g.add(body);
+
+      if (kind.stone) {
+        const belt = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, 0.42, d + 0.08), stoneDarkMat);
+        belt.position.y = 0.2;
+        belt.castShadow = true;
+        belt.receiveShadow = true;
+        g.add(belt);
+      }
+      if (kind.beams) addBeams(g, w, h, d);
+
+      const roofH = Math.max(1.25, h * 0.52);
+      const roofWidth = w + 0.48;
+      const roofDepth = d + 0.62;
+      const roof = makeGable(roofWidth, roofDepth, roofH, roofMat(kind.roof));
+      roof.position.y = h;
+      g.add(roof);
+      const snowRoof = makeGable(roofWidth + 0.18, roofDepth + 0.28, roofH, roofSnowMat);
+      snowRoof.scale.y = 0.4;
+      snowRoof.position.y = h + roofH * 0.64;
+      g.add(snowRoof);
+
+      addIcicles(g, w, d, h);
+      addDoor(g, d);
+      addWindows(g, kind, rng);
+
+      if (!kind.chapel && kind.h > 2.2 && rng() > 0.25) {
+        addChimney(g, w, d, h, roofH, roofDepth);
+      }
+      if (kind.chapel) addSteeple(g, h, roofH, kind.roof, kind.wall);
+      return g;
+    }
+
+    function addBeams(g, w, h, d) {
+      const corners = [[-w / 2, -d / 2], [w / 2, -d / 2], [-w / 2, d / 2], [w / 2, d / 2]];
+      for (const [x, z] of corners) {
+        const post = new THREE.Mesh(postGeo, beamMat);
+        post.scale.y = h;
+        post.position.set(x, h / 2, z);
+        post.castShadow = true;
+        g.add(post);
+      }
+      for (const z of [-d / 2, d / 2]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(w + 0.12, 0.1, 0.12), beamMat);
+        rail.position.set(0, h - 0.05, z);
+        g.add(rail);
+        const mid = rail.clone();
+        mid.position.y = h * 0.48;
+        g.add(mid);
+      }
+      for (const x of [-w / 2, w / 2]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, d + 0.12), beamMat);
+        rail.position.set(x, h - 0.05, 0);
+        g.add(rail);
+      }
+    }
+
+    function addIcicles(g, w, d, h) {
+      for (const zSign of [-1, 1]) {
+        for (let i = 0; i < 4; i++) {
+          const ic = new THREE.Mesh(icicleGeo, roofSnowMat);
+          const len = 0.7 + rand() * 0.7;
+          ic.scale.y = len;
+          ic.position.set(-w * 0.38 + i * (w * 0.76 / 3), h - 0.02, zSign * (d / 2 + 0.22));
+          g.add(ic);
+        }
+      }
+    }
+
+    function addDoor(g, d) {
+      const door = new THREE.Mesh(doorGeo, doorMat);
+      door.position.set(0, 0.66, -d / 2 - 0.03);
+      door.castShadow = true;
+      g.add(door);
+      const knob = new THREE.Mesh(knobGeo, knobMat);
+      knob.position.set(0.24, 0.64, -d / 2 - 0.08);
+      g.add(knob);
+      const step = new THREE.Mesh(stepGeo, stoneMat);
+      step.position.set(0, 0.05, -d / 2 - 0.32);
+      step.receiveShadow = true;
+      step.castShadow = true;
+      g.add(step);
+    }
+
+    function addWindows(g, kind, rng) {
+      const { w, d, h, cols, rows } = kind;
+      placeFacade(g, "front", cols, rows, w, d, h, rng);
+      placeFacade(g, "back", Math.max(1, cols - 1), rows, w, d, h, rng);
+      placeFacade(g, "left", kind.side, rows, w, d, h, rng);
+      placeFacade(g, "right", kind.side, rows, w, d, h, rng);
+    }
+
+    function placeFacade(g, face, cols, rows, w, d, h, rng) {
+      const yBottom = 1.42;
+      const yTop = h - 0.42;
+      for (let row = 0; row < rows; row++) {
+        const y = rows === 1 ? yBottom : yBottom + ((yTop - yBottom) * row) / (rows - 1);
+        for (let col = 0; col < cols; col++) {
+          const span = face === "left" || face === "right" ? d : w;
+          const along = ((col + 0.5) / cols - 0.5) * (span * 0.72);
+          if (face === "front" && row === 0 && Math.abs(along) < 0.55) continue;
+          const lit = rng() > 0.16;
+          if (face === "front") addWindow(g, along, y, -d / 2, 0, -1, lit);
+          else if (face === "back") addWindow(g, along, y, d / 2, 0, 1, lit);
+          else if (face === "left") addWindow(g, -w / 2, y, along, -1, 0, lit);
+          else addWindow(g, w / 2, y, along, 1, 0, lit);
+        }
+      }
+    }
+
+    function addWindow(g, x, y, z, nx, nz, lit) {
+      const out = 0.02;
+      const frame = new THREE.Mesh(frameGeo, frameMat);
+      const pane = new THREE.Mesh(paneGeo, lit ? windowLitMat : windowDarkMat);
+      frame.position.set(x + nx * out, y, z + nz * out);
+      pane.position.set(x + nx * (out + 0.025), y, z + nz * (out + 0.025));
+      const mullV = new THREE.Mesh(mullVGeo, frameMat);
+      const mullH = new THREE.Mesh(mullHGeo, frameMat);
+      mullV.position.copy(pane.position);
+      mullH.position.copy(pane.position);
+      if (nx !== 0) {
+        frame.rotation.y = Math.PI / 2;
+        pane.rotation.y = Math.PI / 2;
+        mullV.rotation.y = Math.PI / 2;
+        mullH.rotation.y = Math.PI / 2;
+      }
+      g.add(frame, pane, mullV, mullH);
+      if (lit) {
+        const glow = new THREE.Mesh(glowGeo, glowMat);
+        glow.position.set(x + nx * (out + 0.05), y, z + nz * (out + 0.05));
+        if (nx !== 0) glow.rotation.y = Math.PI / 2;
+        g.add(glow);
+      }
+    }
+
+    function addChimney(g, w, d, h, roofH, roofDepth) {
+      const zc = roofDepth * 0.16;
+      const ySurf = h + roofH * (1 - Math.abs(zc) / (roofDepth / 2));
+      const ch = new THREE.Group();
+      ch.position.set(w * 0.18, ySurf - 0.2, zc);
+      const stack = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.05, 0.42), stoneDarkMat);
+      stack.position.y = 0.42;
+      stack.castShadow = true;
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.1, 0.52), roofSnowMat);
+      cap.position.y = 0.98;
+      ch.add(stack, cap);
+      ch.userData.smoke = true;
+      g.add(ch);
+    }
+
+    function addSteeple(g, h, roofH, roofHex, wallHex) {
+      const baseY = h + roofH - 0.15;
+      const towerH = 2.35;
+      const tower = new THREE.Mesh(new THREE.BoxGeometry(1.15, towerH, 1.15), wallMat(wallHex));
+      tower.position.y = baseY + towerH / 2;
+      tower.castShadow = true;
+      g.add(tower);
+      const spireH = 1.9;
+      const spire = new THREE.Mesh(new THREE.ConeGeometry(0.78, spireH, 4), roofMat(roofHex));
+      spire.position.y = baseY + towerH + spireH / 2 - 0.05;
+      spire.rotation.y = Math.PI / 4;
+      spire.castShadow = true;
+      g.add(spire);
+      const tip = baseY + towerH + spireH;
+      const vert = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.48, 0.08), knobMat);
+      vert.position.y = tip + 0.16;
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.08, 0.08), knobMat);
+      bar.position.y = tip + 0.22;
+      g.add(vert, bar);
+    }
+
+    function makeGable(width, depth, height, material) {
+      const shape = new THREE.Shape();
+      shape.moveTo(-depth / 2, 0);
+      shape.lineTo(depth / 2, 0);
+      shape.lineTo(0, height);
+      shape.closePath();
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: false });
+      geo.translate(0, 0, -width / 2);
+      geo.rotateY(Math.PI / 2);
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
+    }
+
+    function buildSquare() {
+      const curvePts = [
+        new THREE.Vector3(-6.2, 0, -3.4),
+        new THREE.Vector3(-1.5, 0, -5.2),
+        new THREE.Vector3(3.4, 0, -3.6),
+        new THREE.Vector3(6.4, 0, 0.4),
+        new THREE.Vector3(4.2, 0, 4.6),
+        new THREE.Vector3(-0.4, 0, 5.4),
+        new THREE.Vector3(-4.6, 0, 3.2),
+        new THREE.Vector3(-6.2, 0, -3.4)
+      ];
+      addRibbon(curvePts, 1.25, pathMat);
+
+      const ice = new THREE.Mesh(new THREE.CircleGeometry(2.35, 28), iceMat);
+      ice.rotation.x = -Math.PI / 2;
+      ice.position.set(4.6, 0.03, 3.5);
+      ice.receiveShadow = true;
+      scene.add(ice);
+      const bank = new THREE.Mesh(new THREE.RingGeometry(2.3, 2.95, 28), roofSnowMat);
+      bank.rotation.x = -Math.PI / 2;
+      bank.position.set(4.6, 0.035, 3.5);
+      bank.receiveShadow = true;
+      scene.add(bank);
+
+      const well = new THREE.Group();
+      well.position.set(-1.6, 0, 2.4);
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.82, 0.72, 12), stoneMat);
+      rim.position.y = 0.36;
+      rim.castShadow = true;
+      rim.receiveShadow = true;
+      const water = new THREE.Mesh(new THREE.CircleGeometry(0.55, 14), iceMat);
+      water.rotation.x = -Math.PI / 2;
+      water.position.y = 0.55;
+      const snowRim = new THREE.Mesh(new THREE.TorusGeometry(0.74, 0.09, 8, 16), roofSnowMat);
+      snowRim.rotation.x = Math.PI / 2;
+      snowRim.position.y = 0.74;
+      well.add(rim, water, snowRim);
+      scene.add(well);
+
+      addBench(-3.3, -1.1, 0.5);
+      addBench(1.4, -2.6, -0.4);
+      addVillageTree(-2.4, -1.6);
+    }
+
+    function addRibbon(points, width, material) {
+      for (let i = 0; i < points.length - 1; i++) {
+        const a = points[i];
+        const b = points[i + 1];
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const len = Math.hypot(dx, dz);
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(len, 0.045, width), material);
+        mesh.position.set((a.x + b.x) / 2, 0.025, (a.z + b.z) / 2);
+        // Box length runs along local +x. yaw -pi/2 sends +x to world +z.
+        mesh.rotation.y = Math.atan2(-dz, dx);
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+      }
+    }
+
+    function addBench(x, z, yaw) {
+      const g = new THREE.Group();
+      g.position.set(x, 0, z);
+      g.rotation.y = yaw;
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.08, 0.42), beamMat);
+      seat.position.y = 0.46;
+      seat.castShadow = true;
+      const back = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.42, 0.08), beamMat);
+      back.position.set(0, 0.72, 0.17);
+      back.castShadow = true;
+      for (const sx of [-0.55, 0.55]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.46, 0.36), beamMat);
+        leg.position.set(sx, 0.23, 0);
+        g.add(leg);
+      }
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.05, 0.46), roofSnowMat);
+      cap.position.y = 0.53;
+      g.add(seat, back, cap);
+      scene.add(g);
+    }
+
+    function addVillageTree(x, z) {
+      const g = new THREE.Group();
+      g.position.set(x, 0, z);
+      addPineMesh(g, 1.25, pineMat, true);
+      const colors = baubleMats;
+      const spots = [
+        [0.35, 1.7, 0.2], [-0.4, 2.05, 0.15], [0.1, 2.4, -0.35],
+        [-0.15, 2.85, 0.25], [0.32, 3.15, -0.1], [-0.28, 3.45, -0.2],
+        [0.05, 1.85, -0.4], [0.4, 2.6, 0.25]
+      ];
+      spots.forEach((p, i) => {
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), colors[i % colors.length]);
+        b.position.set(p[0], p[1], p[2]);
+        g.add(b);
+      });
+      const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), baubleMats[1]);
+      star.position.y = 4.15;
+      g.add(star);
+      scene.add(g);
+      treeLight = new THREE.PointLight(0xffb15a, 1.3, 9, 2);
+      treeLight.position.set(x, 2.4, z);
+      scene.add(treeLight);
+    }
+
+    function scatterPines() {
+      let n = 0;
+      for (let i = 0; i < 42; i++) {
+        const ang = rand() * Math.PI * 2;
+        const r = 17.2 + rand() * 16;
+        const x = Math.cos(ang) * r;
+        const z = Math.sin(ang) * r;
+        if (!farFromHouses(x, z, 3.2)) continue;
+        const g = new THREE.Group();
+        g.position.set(x, groundHeight(x, z), z);
+        g.rotation.y = rand() * Math.PI;
+        const scale = 0.7 + rand() * 0.85;
+        addPineMesh(g, scale, rand() > 0.5 ? pineMat : pineMat2, true);
+        scene.add(g);
+        n++;
+      }
+      return n;
+    }
+
+    function addPineMesh(g, scale, mat, snowy) {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * scale, 0.16 * scale, 0.7 * scale, 6), trunkMat);
+      trunk.position.y = 0.35 * scale;
+      trunk.castShadow = true;
+      g.add(trunk);
+      const tiers = [
+        [1.35, 1.55, 1.15],
+        [1.05, 1.25, 2.05],
+        [0.7, 1.0, 2.85]
+      ];
+      for (const [rad, hy, y] of tiers) {
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(rad * scale, hy * scale, 7), mat);
+        cone.position.y = y * scale;
+        cone.castShadow = true;
+        g.add(cone);
+        if (snowy) {
+          const cap = new THREE.Mesh(new THREE.ConeGeometry(rad * scale * 0.55, hy * scale * 0.38, 6), roofSnowMat);
+          cap.position.y = (y + hy * 0.28) * scale;
+          g.add(cap);
+        }
+      }
+    }
+
+    function scatterRocks() {
+      const geo = new THREE.DodecahedronGeometry(0.45, 0);
+      for (let i = 0; i < 14; i++) {
+        const ang = rand() * Math.PI * 2;
+        const r = 6 + rand() * 22;
+        const x = Math.cos(ang) * r;
+        const z = Math.sin(ang) * r;
+        if (!farFromHouses(x, z, 2.4)) continue;
+        if (Math.hypot(x - 4.6, z - 3.5) < 3.2) continue;
+        const rock = new THREE.Mesh(geo, stoneDarkMat);
+        rock.position.set(x, groundHeight(x, z) + 0.12, z);
+        rock.scale.set(0.7 + rand(), 0.4 + rand() * 0.3, 0.7 + rand());
+        rock.rotation.y = rand() * 6;
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        scene.add(rock);
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), roofSnowMat);
+        cap.scale.set(rock.scale.x, 0.35, rock.scale.z);
+        cap.position.set(x, rock.position.y + 0.18, z);
+        scene.add(cap);
+      }
+    }
+
+    function buildSnowman() {
+      const g = new THREE.Group();
+      g.position.set(-4.5, 0, 0.8);
+      const radii = [0.48, 0.34, 0.22];
+      let y = 0;
+      const parts = [];
+      for (const r of radii) {
+        y += r;
+        const s = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), roofSnowMat);
+        s.position.y = y;
+        s.castShadow = true;
+        g.add(s);
+        parts.push(s);
+        y += r * 0.82;
+      }
+      const head = parts[2];
+      const eyeGeo = new THREE.SphereGeometry(0.035, 8, 6);
+      for (const sx of [-0.07, 0.07]) {
+        const eye = new THREE.Mesh(eyeGeo, frameMat);
+        eye.position.set(sx, head.position.y + 0.05, 0.18);
+        g.add(eye);
+      }
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.22, 6), new THREE.MeshStandardMaterial({ color: 0xe07a2f, roughness: 0.6 }));
+      nose.position.set(0, head.position.y, 0.24);
+      nose.rotation.x = Math.PI / 2;
+      g.add(nose);
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.04, 12), frameMat);
+      brim.position.y = head.position.y + 0.2;
+      const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.13, 0.28, 12), frameMat);
+      hat.position.y = head.position.y + 0.36;
+      g.add(brim, hat);
+      // Nose is local +z, so lookAt (which aims +z) turns the face toward the square.
+      g.lookAt(0, g.position.y, 0);
+      scene.add(g);
+    }
+
+    function buildLamps() {
+      const spots = [
+        [-6.2, -2.2], [5.8, -1.2], [2.2, 5.6], [-5.2, 3.6], [0.2, -5.4]
+      ];
+      for (const [x, z] of spots) {
+        const g = new THREE.Group();
+        g.position.set(x, 0, z);
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.15, 8), lampPostMat);
+        post.position.y = 1.05;
+        post.castShadow = true;
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.05, 0.05), lampPostMat);
+        arm.position.set(0.16, 2.12, 0);
+        const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.32, 0.22), lanternMat);
+        lantern.position.set(0.32, 1.92, 0);
+        const glow = new THREE.Mesh(glowGeo, glowMat);
+        glow.scale.set(0.7, 0.7, 0.7);
+        glow.position.copy(lantern.position);
+        g.add(post, arm, lantern, glow);
+        scene.add(g);
+        const light = new THREE.PointLight(0xffb15a, 2.1, 8.5, 2);
+        light.position.set(x + 0.32, 1.95, z);
+        scene.add(light);
+        lampLights.push(light);
+      }
+      return spots.length;
+    }
+
+    function farFromHouses(x, z, min) {
+      for (const p of plots) {
+        if (Math.hypot(x - p.x, z - p.z) < min) return false;
+      }
+      return true;
+    }
+
+    function buildSnow() {
+      const flake = discMap;
+      const layers = [];
+      layers.push(makeSnowLayer(2600, 0.09, 1.6, 3.4, 0.85, flake));
+      layers.push(makeSnowLayer(900, 0.2, 0.7, 1.6, 0.55, flake));
+      return layers;
+    }
+
+    function makeSnowLayer(count, size, speedMin, speedMax, opacity, map) {
+      const positions = new Float32Array(count * 3);
+      const speeds = new Float32Array(count);
+      const phase = new Float32Array(count);
+      for (let i = 0; i < count; i++) resetFlake(positions, speeds, phase, i, true, speedMin, speedMax);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      const mat = new THREE.PointsMaterial({
+        color: 0xf7fbff,
+        size,
+        map,
+        transparent: true,
+        opacity,
+        depthWrite: false,
+        sizeAttenuation: true
+      });
+      scene.add(new THREE.Points(geo, mat));
+      return { positions, speeds, phase, speedMin, speedMax, geo };
+    }
+
+    function resetFlake(positions, speeds, phase, i, anywhere, speedMin, speedMax) {
+      const i3 = i * 3;
+      positions[i3] = (rand() - 0.5) * 72;
+      positions[i3 + 1] = anywhere ? rand() * 24 : 22 + rand() * 4;
+      positions[i3 + 2] = (rand() - 0.5) * 72;
+      speeds[i] = speedMin + rand() * (speedMax - speedMin);
+      phase[i] = rand() * Math.PI * 2;
+    }
+
+    function driftSnow(dt) {
+      const t = clock.elapsedTime;
+      const gustX = Math.sin(t * 0.17) * 1.1;
+      const gustZ = Math.cos(t * 0.13) * 0.55;
+      for (const layer of snowLayers) {
+        const p = layer.positions;
+        for (let i = 0; i < layer.speeds.length; i++) {
+          const i3 = i * 3;
+          p[i3 + 1] -= layer.speeds[i] * dt;
+          p[i3] += (gustX + Math.sin(t * 1.7 + layer.phase[i]) * 0.45) * dt;
+          p[i3 + 2] += (gustZ + Math.cos(t * 1.3 + layer.phase[i]) * 0.35) * dt;
+          if (p[i3 + 1] < 0 || Math.abs(p[i3]) > 40 || Math.abs(p[i3 + 2]) > 40) {
+            resetFlake(p, layer.speeds, layer.phase, i, false, layer.speedMin, layer.speedMax);
+          }
+        }
+        layer.geo.attributes.position.needsUpdate = true;
+      }
+    }
+
+    function collectSmoke() {
+      const list = [];
+      scene.traverse((obj) => {
+        if (!obj.userData || !obj.userData.smoke) return;
+        const puffs = [];
+        for (let i = 0; i < 5; i++) {
+          const mat = new THREE.SpriteMaterial({
+            map: smokeTex,
+            color: 0xd5dde6,
+            transparent: true,
+            opacity: 0.25,
+            depthWrite: false
+          });
+          const s = new THREE.Sprite(mat);
+          s.position.y = 1 + i * 0.3;
+          obj.add(s);
+          puffs.push({ sprite: s, age: i / 5 });
+        }
+        list.push(puffs);
+      });
+      return list;
+    }
+
+    function driftSmoke(dt) {
+      for (const puffs of smokes) {
+        for (const p of puffs) {
+          p.age += dt * 0.18;
+          if (p.age > 1) p.age -= 1;
+          const a = p.age;
+          p.sprite.position.y = 1.05 + a * 1.8;
+          p.sprite.position.x = Math.sin(a * 6.2) * 0.12;
+          p.sprite.scale.setScalar(0.35 + a * 0.7);
+          p.sprite.material.opacity = (1 - a) * 0.28;
+        }
+      }
+    }
+
+    function makeSnowTexture() {
+      const size = 512;
+      const c = document.createElement("canvas");
+      c.width = c.height = size;
+      const g = c.getContext("2d");
+      const paint = mulberry32(99);
+      g.fillStyle = "#e7eef5";
+      g.fillRect(0, 0, size, size);
+      for (let i = 0; i < 5000; i++) {
+        const v = 180 + Math.floor(paint() * 70);
+        g.fillStyle = "rgba(" + v + "," + (v + 6) + "," + Math.min(255, v + 14) + ",0.45)";
+        g.fillRect(paint() * size, paint() * size, 2, 2);
+      }
+      for (let i = 0; i < 24; i++) {
+        g.fillStyle = "rgba(140,164,186," + (0.04 + paint() * 0.06) + ")";
+        g.beginPath();
+        g.ellipse(paint() * size, paint() * size, 30 + paint() * 90, 16 + paint() * 40, paint() * 3, 0, Math.PI * 2);
+        g.fill();
+      }
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(8, 8);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      return tex;
+    }
+
+    function smoothstep(edge0, edge1, x) {
+      const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+      return t * t * (3 - 2 * t);
+    }
+
+    function mulberry32(seed) {
+      let a = seed >>> 0;
+      return function () {
+        a |= 0;
+        a = (a + 0x6d2b79f5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+  </script>
+</body>
+</html>

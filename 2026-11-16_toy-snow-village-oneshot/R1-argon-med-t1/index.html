@@ -1,0 +1,1626 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>눈 내리는 밤의 작은 마을 - 3D Winter Village</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', '맑은 고딕', sans-serif;
+      background: #090d1a;
+      color: #f8fafc;
+    }
+
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      cursor: grab;
+    }
+
+    #canvas-container:active {
+      cursor: grabbing;
+    }
+
+    /* 상단 타이틀 & 상태 배너 */
+    .hud-header {
+      position: fixed;
+      top: 24px;
+      left: 24px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      width: fit-content;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      background: rgba(15, 23, 42, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: #fcd34d;
+      transition: all 0.5s ease;
+    }
+
+    body.day-mode .badge {
+      background: rgba(255, 255, 255, 0.72);
+      border-color: rgba(15, 23, 42, 0.12);
+      color: #0284c7;
+    }
+
+    .title {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      text-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+      transition: color 0.5s ease, text-shadow 0.5s ease;
+    }
+
+    body.day-mode .title {
+      color: #0f172a;
+      text-shadow: 0 2px 12px rgba(255, 255, 255, 0.8);
+    }
+
+    .subtitle {
+      font-size: 13.5px;
+      color: rgba(226, 232, 240, 0.85);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      transition: color 0.5s ease, text-shadow 0.5s ease;
+    }
+
+    body.day-mode .subtitle {
+      color: #334155;
+      text-shadow: 0 1px 6px rgba(255, 255, 255, 0.8);
+    }
+
+    /* 우측 상단 컨트롤 패널 */
+    .controls-panel {
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: rgba(15, 23, 42, 0.65);
+      color: #f8fafc;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+      transition: transform 0.18s ease, background 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      background: rgba(30, 41, 59, 0.82);
+      border-color: rgba(255, 255, 255, 0.38);
+    }
+
+    .btn:active {
+      transform: translateY(0);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.92), rgba(234, 88, 12, 0.92));
+      border-color: rgba(253, 224, 71, 0.5);
+      color: #fff;
+      box-shadow: 0 8px 24px rgba(245, 158, 11, 0.35);
+    }
+
+    .btn-primary:hover {
+      background: linear-gradient(135deg, rgba(251, 191, 36, 0.98), rgba(249, 115, 22, 0.98));
+      border-color: rgba(254, 240, 138, 0.75);
+      box-shadow: 0 10px 28px rgba(245, 158, 11, 0.5);
+    }
+
+    body.day-mode .btn {
+      background: rgba(255, 255, 255, 0.78);
+      color: #0f172a;
+      border-color: rgba(15, 23, 42, 0.14);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+    }
+
+    body.day-mode .btn:hover {
+      background: rgba(255, 255, 255, 0.94);
+      border-color: rgba(15, 23, 42, 0.26);
+    }
+
+    body.day-mode .btn-primary {
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      color: #ffffff;
+      border-color: rgba(147, 197, 253, 0.6);
+      box-shadow: 0 8px 24px rgba(37, 99, 235, 0.32);
+    }
+
+    body.day-mode .btn-primary:hover {
+      background: linear-gradient(135deg, #2563eb, #1e40af);
+    }
+
+    .btn-icon {
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    /* 하단 조작 안내 바 */
+    .hud-footer {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 20px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.58);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      font-size: 13px;
+      color: rgba(241, 245, 249, 0.9);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+      white-space: nowrap;
+      transition: all 0.4s ease;
+    }
+
+    body.day-mode .hud-footer {
+      background: rgba(255, 255, 255, 0.76);
+      border-color: rgba(15, 23, 42, 0.12);
+      color: #1e293b;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+    }
+
+    .hint-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hint-divider {
+      width: 1px;
+      height: 12px;
+      background: rgba(255, 255, 255, 0.22);
+    }
+
+    body.day-mode .hint-divider {
+      background: rgba(15, 23, 42, 0.18);
+    }
+
+    /* 토스트 알림 */
+    .toast {
+      position: fixed;
+      bottom: 74px;
+      left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.78);
+      border: 1px solid rgba(253, 224, 71, 0.35);
+      color: #fef08a;
+      font-size: 13px;
+      font-weight: 600;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      z-index: 20;
+      backdrop-filter: blur(8px);
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    body.day-mode .toast {
+      background: rgba(15, 23, 42, 0.85);
+      color: #bae6fd;
+      border-color: rgba(56, 189, 248, 0.4);
+    }
+
+    @media (max-width: 720px) {
+      .hud-header {
+        top: 16px;
+        left: 16px;
+      }
+      .title {
+        font-size: 20px;
+      }
+      .subtitle {
+        display: none;
+      }
+      .controls-panel {
+        top: 16px;
+        right: 16px;
+      }
+      .btn {
+        padding: 9px 14px;
+        font-size: 13px;
+      }
+      .hud-footer {
+        font-size: 11.5px;
+        padding: 8px 14px;
+        gap: 10px;
+        max-width: 92vw;
+        overflow-x: auto;
+      }
+    }
+  </style>
+
+  <!-- Three.js CDN Import Map -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <!-- 좌측 상단 타이틀 -->
+  <div class="hud-header">
+    <div class="badge" id="time-badge">
+      <span id="badge-icon">🌙</span>
+      <span id="badge-text">고요한 겨울밤 · 창문 불빛 켜짐</span>
+    </div>
+    <h1 class="title">눈 내리는 작은 마을</h1>
+    <p class="subtitle">따뜻한 불빛이 켜진 집들과 흩날리는 눈송이 디오라마</p>
+  </div>
+
+  <!-- 우측 상단 버튼들 -->
+  <div class="controls-panel">
+    <button class="btn btn-primary" id="toggle-day-night-btn" type="button" aria-label="낮과 밤 전환">
+      <span class="btn-icon" id="day-night-icon">☀️</span>
+      <span id="day-night-label">낮으로 바꾸기</span>
+    </button>
+    <button class="btn" id="toggle-snow-btn" type="button" aria-label="눈 세기 조절">
+      <span class="btn-icon">❄️</span>
+      <span id="snow-label">눈: 함박눈</span>
+    </button>
+    <button class="btn" id="toggle-rotate-btn" type="button" aria-label="자동 회전 토글">
+      <span class="btn-icon">🔄</span>
+      <span id="rotate-label">자동 회전: 켜짐</span>
+    </button>
+  </div>
+
+  <!-- 클릭 인터랙션 토스트 -->
+  <div class="toast" id="toast-msg">집을 클릭해 창문 불빛을 조절해보세요!</div>
+
+  <!-- 하단 마우스 안내 -->
+  <div class="hud-footer">
+    <span class="hint-item">🖱️ <strong>좌클릭 드래그</strong> 둘러보기</span>
+    <span class="hint-divider"></span>
+    <span class="hint-item">🔍 <strong>휠 스크롤</strong> 확대·축소</span>
+    <span class="hint-divider"></span>
+    <span class="hint-item">✋ <strong>우클릭 드래그</strong> 화면 이동</span>
+    <span class="hint-divider"></span>
+    <span class="hint-item">🏠 <strong>집 클릭</strong> 창문 불빛 켜기/끄기</span>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ==========================================
+    // 1. 기본 씬, 카메라, 렌더러 설정
+    // ==========================================
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      250
+    );
+    camera.position.set(28, 19, 32);
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance'
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 2.2, 0);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.maxPolarAngle = Math.PI / 2 - 0.04; // 땅 아래로 내려가지 않도록 제한
+    controls.minDistance = 10;
+    controls.maxDistance = 68;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.45;
+
+    // ==========================================
+    // 2. 프로시저럴 텍스처 생성 유틸리티
+    // ==========================================
+    function createSnowflakeTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 64;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      const grad = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+      grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+      grad.addColorStop(0.45, 'rgba(240, 248, 255, 0.85)');
+      grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 64, 64);
+      const tex = new THREE.CanvasTexture(canvas);
+      return tex;
+    }
+
+    function createWindowFrameTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+
+      // 따뜻한 내부 그라데이션
+      const grad = ctx.createRadialGradient(64, 64, 8, 64, 64, 72);
+      grad.addColorStop(0, '#fff7d6');
+      grad.addColorStop(0.55, '#ffc857');
+      grad.addColorStop(1, '#e07a22');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 128, 128);
+
+      // 은은한 커튼 실루엣
+      ctx.fillStyle = 'rgba(180, 75, 20, 0.22)';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(38, 60, 14, 128);
+      ctx.lineTo(0, 128);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(128, 0);
+      ctx.quadraticCurveTo(90, 60, 114, 128);
+      ctx.lineTo(128, 128);
+      ctx.fill();
+
+      // 창틀 (십자 격자 + 테두리)
+      ctx.strokeStyle = '#3a2418';
+      ctx.lineWidth = 10;
+      ctx.strokeRect(5, 5, 118, 118);
+
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(64, 0);
+      ctx.lineTo(64, 128);
+      ctx.moveTo(0, 64);
+      ctx.lineTo(128, 64);
+      ctx.stroke();
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    const snowflakeTexture = createSnowflakeTexture();
+    const windowTexture = createWindowFrameTexture();
+
+    // ==========================================
+    // 3. 공통 머티리얼 정의
+    // ==========================================
+    const snowMat = new THREE.MeshStandardMaterial({
+      color: 0xf4f8ff,
+      roughness: 0.72,
+      metalness: 0.05
+    });
+
+    const darkWoodMat = new THREE.MeshStandardMaterial({
+      color: 0x43291f,
+      roughness: 0.85
+    });
+
+    const warmWoodMat = new THREE.MeshStandardMaterial({
+      color: 0x7c4d32,
+      roughness: 0.8
+    });
+
+    const stoneMat = new THREE.MeshStandardMaterial({
+      color: 0x6c7582,
+      roughness: 0.9
+    });
+
+    const chimneyBrickMat = new THREE.MeshStandardMaterial({
+      color: 0x7f3b32,
+      roughness: 0.85
+    });
+
+    const foliageMat = new THREE.MeshStandardMaterial({
+      color: 0x1e4631,
+      roughness: 0.82
+    });
+
+    const iceMat = new THREE.MeshStandardMaterial({
+      color: 0x93c5fd,
+      roughness: 0.14,
+      metalness: 0.25
+    });
+
+    // ==========================================
+    // 4. 지형 (눈 덮인 언덕, 얼어붙은 연못, 돌다리, 길)
+    // ==========================================
+    const worldGroup = new THREE.Group();
+    scene.add(worldGroup);
+
+    // 메인 눈 섬 베이스
+    const baseGeo = new THREE.CylinderGeometry(28, 25, 3.2, 64);
+    const baseMesh = new THREE.Mesh(baseGeo, snowMat);
+    baseMesh.position.y = -1.6;
+    baseMesh.receiveShadow = true;
+    worldGroup.add(baseMesh);
+
+    // 나무 받침대 (디오라마 느낌 강조)
+    const plinthGeo = new THREE.CylinderGeometry(26.2, 27.2, 1.4, 64);
+    const plinthMesh = new THREE.Mesh(plinthGeo, darkWoodMat);
+    plinthMesh.position.y = -3.4;
+    worldGroup.add(plinthMesh);
+
+    // 부드러운 눈 언덕들
+    const hillsData = [
+      { x: -12, y: -1.8, z: -11, rx: 11, ry: 3.4, rz: 9 },
+      { x: 11, y: -1.6, z: -12, rx: 12, ry: 3.8, rz: 10 },
+      { x: -14, y: -2.0, z: 9, rx: 9, ry: 2.8, rz: 9 },
+      { x: 14, y: -1.9, z: 8, rx: 10, ry: 3.1, rz: 10 },
+      { x: 0, y: -2.2, z: -16, rx: 13, ry: 3.6, rz: 8 }
+    ];
+
+    const sphereGeo = new THREE.SphereGeometry(1, 32, 20);
+    hillsData.forEach((h) => {
+      const hill = new THREE.Mesh(sphereGeo, snowMat);
+      hill.scale.set(h.rx, h.ry, h.rz);
+      hill.position.set(h.x, h.y, h.z);
+      hill.receiveShadow = true;
+      worldGroup.add(hill);
+    });
+
+    // 얼어붙은 겨울 연못 (우측 전방)
+    const pondGroup = new THREE.Group();
+    pondGroup.position.set(6.5, 0.02, 8.2);
+    worldGroup.add(pondGroup);
+
+    const pondMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(5.2, 5.2, 0.08, 40),
+      iceMat
+    );
+    pondMesh.scale.set(1.25, 1, 0.88);
+    pondMesh.receiveShadow = true;
+    pondGroup.add(pondMesh);
+
+    // 연못 가장자리 눈더미와 조약돌
+    for (let i = 0; i < 22; i++) {
+      const angle = (i / 22) * Math.PI * 2;
+      const rx = Math.cos(angle) * 5.2 * 1.25;
+      const rz = Math.sin(angle) * 5.2 * 0.88;
+      const bank = new THREE.Mesh(sphereGeo, i % 3 === 0 ? stoneMat : snowMat);
+      const s = 0.45 + (i % 4) * 0.14;
+      bank.scale.set(s * 1.3, s * 0.55, s);
+      bank.position.set(rx, 0.08, rz);
+      bank.receiveShadow = true;
+      bank.castShadow = true;
+      pondGroup.add(bank);
+    }
+
+    // 마을 징검돌 길
+    const pathStones = [
+      { x: 0, z: 2.2 }, { x: 0.2, z: 3.6 }, { x: 0.5, z: 5.0 },
+      { x: 0.7, z: 6.5 }, { x: 0.4, z: 8.0 }, { x: -0.2, z: 9.5 },
+      { x: -0.8, z: 11.0 }, { x: -1.2, z: 12.6 }, { x: -1.4, z: 14.2 },
+      { x: -2.2, z: 1.5 }, { x: -4.0, z: 1.8 }, { x: -5.8, z: 2.3 },
+      { x: 2.2, z: 1.3 }, { x: 4.1, z: 1.0 }, { x: 6.0, z: 0.5 }
+    ];
+    pathStones.forEach((pt, idx) => {
+      const st = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.55, 0.62, 0.12, 7),
+        stoneMat
+      );
+      st.position.set(pt.x, 0.02, pt.z);
+      st.rotation.y = idx * 0.9;
+      st.scale.set(1.1, 1, 0.85);
+      st.receiveShadow = true;
+      worldGroup.add(st);
+    });
+
+    // ==========================================
+    // 5. 집(코티지) 생성기 - 불 켜진 창문 + 굴뚝 연기 + 고드름
+    // ==========================================
+    const houses = [];
+    const windowMaterials = [];
+    const windowPointLights = [];
+    const chimneyEmitters = [];
+    const interactiveHouses = [];
+
+    function createHouse(config) {
+      const {
+        name,
+        x,
+        y = 0,
+        z,
+        rotY = 0,
+        width = 3.2,
+        height = 2.4,
+        depth = 2.8,
+        wallColor = 0xf4e8d1,
+        roofColor = 0x7c2d12,
+        roofHeight = 1.7,
+        hasTower = false,
+        hasSecondFloor = false
+      } = config;
+
+      const houseGroup = new THREE.Group();
+      houseGroup.position.set(x, y, z);
+      houseGroup.rotation.y = rotY;
+      houseGroup.userData = { name, lightsOn: true, windows: [], lights: [] };
+      worldGroup.add(houseGroup);
+
+      const wallMat = new THREE.MeshStandardMaterial({
+        color: wallColor,
+        roughness: 0.82
+      });
+      const roofMat = new THREE.MeshStandardMaterial({
+        color: roofColor,
+        roughness: 0.78
+      });
+
+      // 석조 기단
+      const foundMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(width + 0.24, 0.45, depth + 0.24),
+        stoneMat
+      );
+      foundMesh.position.y = 0.225;
+      foundMesh.castShadow = true;
+      foundMesh.receiveShadow = true;
+      houseGroup.add(foundMesh);
+
+      // 본체 벽면
+      const bodyMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(width, height, depth),
+        wallMat
+      );
+      bodyMesh.position.y = 0.45 + height / 2;
+      bodyMesh.castShadow = true;
+      bodyMesh.receiveShadow = true;
+      bodyMesh.userData.parentHouse = houseGroup;
+      houseGroup.add(bodyMesh);
+      interactiveHouses.push(bodyMesh);
+
+      // 목조 기둥 장식 (코너 기둥)
+      const beamGeo = new THREE.BoxGeometry(0.14, height + 0.05, 0.14);
+      [
+        [-width / 2, -depth / 2],
+        [width / 2, -depth / 2],
+        [-width / 2, depth / 2],
+        [width / 2, depth / 2]
+      ].forEach(([bx, bz]) => {
+        const beam = new THREE.Mesh(beamGeo, darkWoodMat);
+        beam.position.set(bx, 0.45 + height / 2, bz);
+        beam.castShadow = true;
+        houseGroup.add(beam);
+      });
+
+      // 박공 지붕 (Pitched Roof + 눈 덮인 지붕)
+      const roofTopY = 0.45 + height;
+      const overhang = 0.38;
+      const rw = width + overhang * 2;
+      const rd = depth + overhang * 2;
+
+      const roofShape = new THREE.Shape();
+      roofShape.moveTo(-rw / 2, 0);
+      roofShape.lineTo(0, roofHeight);
+      roofShape.lineTo(rw / 2, 0);
+      roofShape.closePath();
+
+      const extrudeSettings = {
+        depth: rd,
+        bevelEnabled: false
+      };
+      const roofGeo = new THREE.ExtrudeGeometry(roofShape, extrudeSettings);
+      roofGeo.center();
+      const roofMesh = new THREE.Mesh(roofGeo, roofMat);
+      roofMesh.position.set(0, roofTopY + roofHeight / 2, 0);
+      roofMesh.castShadow = true;
+      roofMesh.receiveShadow = true;
+      roofMesh.userData.parentHouse = houseGroup;
+      houseGroup.add(roofMesh);
+      interactiveHouses.push(roofMesh);
+
+      // 지붕 위 소복한 눈 덮개
+      const snowRoofShape = new THREE.Shape();
+      const srw = rw + 0.1;
+      snowRoofShape.moveTo(-srw / 2, 0);
+      snowRoofShape.lineTo(0, roofHeight + 0.14);
+      snowRoofShape.lineTo(srw / 2, 0);
+      snowRoofShape.lineTo(srw / 2 - 0.22, -0.14);
+      snowRoofShape.lineTo(0, roofHeight - 0.14);
+      snowRoofShape.lineTo(-srw / 2 + 0.22, -0.14);
+      snowRoofShape.closePath();
+
+      const snowRoofGeo = new THREE.ExtrudeGeometry(snowRoofShape, {
+        depth: rd + 0.08,
+        bevelEnabled: true,
+        bevelThickness: 0.06,
+        bevelSize: 0.05,
+        bevelSegments: 2
+      });
+      snowRoofGeo.center();
+      const snowRoofMesh = new THREE.Mesh(snowRoofGeo, snowMat);
+      snowRoofMesh.position.set(0, roofTopY + roofHeight / 2 + 0.16, 0);
+      snowRoofMesh.castShadow = true;
+      snowRoofMesh.receiveShadow = true;
+      houseGroup.add(snowRoofMesh);
+
+      // 박공 삼각형 벽체 채우기
+      const gableShape = new THREE.Shape();
+      gableShape.moveTo(-width / 2, 0);
+      gableShape.lineTo(0, roofHeight - 0.12);
+      gableShape.lineTo(width / 2, 0);
+      gableShape.closePath();
+      const gableGeo = new THREE.ExtrudeGeometry(gableShape, {
+        depth: depth,
+        bevelEnabled: false
+      });
+      gableGeo.center();
+      const gableMesh = new THREE.Mesh(gableGeo, wallMat);
+      gableMesh.position.set(0, roofTopY + (roofHeight - 0.12) / 2, 0);
+      gableMesh.castShadow = true;
+      houseGroup.add(gableMesh);
+
+      // 굴뚝 & 눈 모자
+      const chimneyX = (width * 0.26) * (Math.random() > 0.5 ? 1 : -1);
+      const chimneyZ = -depth * 0.18;
+      const chimneyH = roofHeight + 1.05;
+      const chimneyMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.56, chimneyH, 0.56),
+        chimneyBrickMat
+      );
+      chimneyMesh.position.set(chimneyX, roofTopY + chimneyH / 2 - 0.2, chimneyZ);
+      chimneyMesh.castShadow = true;
+      houseGroup.add(chimneyMesh);
+
+      const chimneyRim = new THREE.Mesh(
+        new THREE.BoxGeometry(0.68, 0.16, 0.68),
+        snowMat
+      );
+      chimneyRim.position.set(chimneyX, roofTopY + chimneyH - 0.12, chimneyZ);
+      houseGroup.add(chimneyRim);
+
+      // 굴뚝 월드 좌표 계산용 더미 오브젝트
+      const smokeOrigin = new THREE.Object3D();
+      smokeOrigin.position.set(chimneyX, roofTopY + chimneyH, chimneyZ);
+      houseGroup.add(smokeOrigin);
+      chimneyEmitters.push(smokeOrigin);
+
+      // 현관문 & 포치
+      const doorW = 0.68;
+      const doorH = 1.25;
+      const doorMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(doorW, doorH, 0.1),
+        warmWoodMat
+      );
+      doorMesh.position.set(0, 0.45 + doorH / 2, depth / 2 + 0.02);
+      houseGroup.add(doorMesh);
+
+      // 문 프레임과 작은 계단
+      const stepMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1.1, 0.22, 0.5),
+        stoneMat
+      );
+      stepMesh.position.set(0, 0.22, depth / 2 + 0.25);
+      stepMesh.receiveShadow = true;
+      houseGroup.add(stepMesh);
+
+      // 문 위 눈 쌓인 차양
+      const canopyMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1.15, 0.14, 0.52),
+        snowMat
+      );
+      canopyMesh.position.set(0, 0.45 + doorH + 0.12, depth / 2 + 0.2);
+      canopyMesh.rotation.x = 0.22;
+      houseGroup.add(canopyMesh);
+
+      // 크리스마스 리스 (문 위 장식)
+      const wreathMesh = new THREE.Mesh(
+        new THREE.TorusGeometry(0.16, 0.05, 8, 16),
+        foliageMat
+      );
+      wreathMesh.position.set(0, 0.45 + doorH * 0.68, depth / 2 + 0.08);
+      houseGroup.add(wreathMesh);
+
+      // 창문 생성 헬퍼 (따뜻한 발광 머티리얼 + 눈 턱)
+      const houseWinMat = new THREE.MeshStandardMaterial({
+        map: windowTexture,
+        emissive: new THREE.Color(0xff9e2c),
+        emissiveMap: windowTexture,
+        emissiveIntensity: 2.3,
+        roughness: 0.25
+      });
+      windowMaterials.push(houseWinMat);
+      houseGroup.userData.winMat = houseWinMat;
+
+      function addWindow(wx, wy, wz, ry = 0, w = 0.66, h = 0.76) {
+        const winGroup = new THREE.Group();
+        winGroup.position.set(wx, wy, wz);
+        winGroup.rotation.y = ry;
+
+        const pane = new THREE.Mesh(new THREE.PlaneGeometry(w, h), houseWinMat);
+        pane.userData.parentHouse = houseGroup;
+        winGroup.add(pane);
+        interactiveHouses.push(pane);
+
+        // 창문 눈 쌓인 창턱
+        const sill = new THREE.Mesh(
+          new THREE.BoxGeometry(w + 0.16, 0.12, 0.18),
+          snowMat
+        );
+        sill.position.set(0, -h / 2 - 0.04, 0.06);
+        winGroup.add(sill);
+
+        houseGroup.add(winGroup);
+      }
+
+      const winY = 0.45 + height * 0.54;
+      // 정면 좌우 창문
+      if (width >= 2.8) {
+        addWindow(-width * 0.3, winY, depth / 2 + 0.03, 0);
+        addWindow(width * 0.3, winY, depth / 2 + 0.03, 0);
+      } else {
+        addWindow(width * 0.24, winY, depth / 2 + 0.03, 0);
+        doorMesh.position.x = -width * 0.22;
+        stepMesh.position.x = -width * 0.22;
+        canopyMesh.position.x = -width * 0.22;
+        wreathMesh.position.x = -width * 0.22;
+      }
+
+      // 후면 창문
+      addWindow(-width * 0.25, winY, -depth / 2 - 0.03, Math.PI);
+      addWindow(width * 0.25, winY, -depth / 2 - 0.03, Math.PI);
+
+      // 좌우 측면 창문
+      addWindow(-width / 2 - 0.03, winY, 0, -Math.PI / 2);
+      addWindow(width / 2 + 0.03, winY, 0, Math.PI / 2);
+
+      // 다락방 박공 창문 (정면 & 후면)
+      if (roofHeight >= 1.45 || hasSecondFloor) {
+        addWindow(0, roofTopY + roofHeight * 0.42, depth / 2 + 0.03, 0, 0.52, 0.52);
+        addWindow(0, roofTopY + roofHeight * 0.42, -depth / 2 - 0.03, Math.PI, 0.52, 0.52);
+      }
+
+      // 시계탑/종탑 옵션 (마을 중앙 예배당/회관용)
+      if (hasTower) {
+        const towerH = 2.2;
+        const towerW = 1.3;
+        const towerMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(towerW, towerH, towerW),
+          wallMat
+        );
+        towerMesh.position.set(0, roofTopY + roofHeight * 0.5 + towerH / 2, -depth * 0.15);
+        towerMesh.castShadow = true;
+        houseGroup.add(towerMesh);
+
+        const spireMesh = new THREE.Mesh(
+          new THREE.ConeGeometry(towerW * 0.78, 1.9, 4),
+          roofMat
+        );
+        spireMesh.position.set(0, roofTopY + roofHeight * 0.5 + towerH + 0.95, -depth * 0.15);
+        spireMesh.rotation.y = Math.PI / 4;
+        spireMesh.castShadow = true;
+        houseGroup.add(spireMesh);
+
+        // 탑의 4면 작은 불빛 창문
+        const twY = roofTopY + roofHeight * 0.5 + towerH * 0.55;
+        const twZ = -depth * 0.15;
+        addWindow(0, twY, twZ + towerW / 2 + 0.02, 0, 0.42, 0.58);
+        addWindow(0, twY, twZ - towerW / 2 - 0.02, Math.PI, 0.42, 0.58);
+        addWindow(towerW / 2 + 0.02, twY, twZ, Math.PI / 2, 0.42, 0.58);
+        addWindow(-towerW / 2 - 0.02, twY, twZ, -Math.PI / 2, 0.42, 0.58);
+      }
+
+      // 집 주변 눈 바닥을 따뜻하게 비추는 포인트 라이트
+      const houseGlow = new THREE.PointLight(0xff9b3d, 2.6, 8.5, 1.7);
+      houseGlow.position.set(0, winY, depth / 2 + 0.9);
+      houseGroup.add(houseGlow);
+
+      const backGlow = new THREE.PointLight(0xff9b3d, 1.6, 6.5, 1.8);
+      backGlow.position.set(0, winY, -depth / 2 - 0.8);
+      houseGroup.add(backGlow);
+
+      windowPointLights.push(houseGlow, backGlow);
+      houseGroup.userData.lights.push(houseGlow, backGlow);
+
+      houses.push(houseGroup);
+      return houseGroup;
+    }
+
+    // 마을을 이루는 8채의 개성 있는 집 배치
+    const villageHousesConfig = [
+      {
+        name: '시계탑 마을회관',
+        x: 0, z: -6.2, rotY: 0,
+        width: 4.0, height: 2.7, depth: 3.2,
+        wallColor: 0xf7ebd2, roofColor: 0x7f1d1d, roofHeight: 1.85,
+        hasTower: true
+      },
+      {
+        name: '따뜻한 베이커리',
+        x: -6.5, z: -3.5, rotY: 0.48,
+        width: 3.4, height: 2.3, depth: 2.8,
+        wallColor: 0xfde68a, roofColor: 0x9a3412, roofHeight: 1.6,
+        hasSecondFloor: true
+      },
+      {
+        name: '별빛 산장',
+        x: 6.8, z: -3.8, rotY: -0.45,
+        width: 3.5, height: 2.4, depth: 2.9,
+        wallColor: 0xe2e8f0, roofColor: 0x1e3a8a, roofHeight: 1.75,
+        hasSecondFloor: true
+      },
+      {
+        name: '눈꽃 오두막',
+        x: -9.5, z: 3.2, rotY: 1.15,
+        width: 2.9, height: 2.1, depth: 2.5,
+        wallColor: 0xfecdd3, roofColor: 0x881337, roofHeight: 1.5
+      },
+      {
+        name: '호숫가 찻집',
+        x: 11.2, z: 2.6, rotY: -1.1,
+        width: 3.2, height: 2.2, depth: 2.7,
+        wallColor: 0xd9f99d, roofColor: 0x365314, roofHeight: 1.55
+      },
+      {
+        name: '언덕 위 공방',
+        x: -5.4, z: 9.8, rotY: 2.35,
+        width: 3.3, height: 2.35, depth: 2.7,
+        wallColor: 0xfed7aa, roofColor: 0x7c2d12, roofHeight: 1.65,
+        hasSecondFloor: true
+      },
+      {
+        name: '숲속 작은 책방',
+        x: -12.8, z: -6.5, y: 0.55, rotY: 0.65,
+        width: 2.8, height: 2.2, depth: 2.5,
+        wallColor: 0xe9d5ff, roofColor: 0x4c1d95, roofHeight: 1.6
+      },
+      {
+        name: '북쪽 등대지기 집',
+        x: 12.2, z: -8.2, y: 0.7, rotY: -0.68,
+        width: 3.0, height: 2.5, depth: 2.6,
+        wallColor: 0xfef3c7, roofColor: 0x991b1b, roofHeight: 1.7
+      }
+    ];
+
+    villageHousesConfig.forEach(createHouse);
+
+    // ==========================================
+    // 6. 중앙 광장 대형 크리스마스 트리와 전구 장식
+    // ==========================================
+    const ornamentMaterials = [];
+    let treeTopLight;
+
+    function createCenterChristmasTree(x, z) {
+      const treeGroup = new THREE.Group();
+      treeGroup.position.set(x, 0, z);
+      worldGroup.add(treeGroup);
+
+      // 돌 화단 테두리
+      const ringMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.7, 1.9, 0.35, 16),
+        stoneMat
+      );
+      ringMesh.position.y = 0.175;
+      ringMesh.receiveShadow = true;
+      treeGroup.add(ringMesh);
+
+      const innerSnow = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.5, 1.5, 0.42, 16),
+        snowMat
+      );
+      innerSnow.position.y = 0.2;
+      treeGroup.add(innerSnow);
+
+      // 기둥
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.28, 0.38, 1.4, 10),
+        darkWoodMat
+      );
+      trunk.position.y = 0.7;
+      trunk.castShadow = true;
+      treeGroup.add(trunk);
+
+      // 4단 솔잎과 눈 덮개
+      const tiers = [
+        { r: 1.85, h: 1.9, y: 1.7 },
+        { r: 1.48, h: 1.7, y: 2.75 },
+        { r: 1.1, h: 1.45, y: 3.65 },
+        { r: 0.72, h: 1.2, y: 4.45 }
+      ];
+
+      tiers.forEach((t) => {
+        const cone = new THREE.Mesh(
+          new THREE.ConeGeometry(t.r, t.h, 12),
+          foliageMat
+        );
+        cone.position.y = t.y;
+        cone.castShadow = true;
+        cone.receiveShadow = true;
+        treeGroup.add(cone);
+
+        const snowCap = new THREE.Mesh(
+          new THREE.ConeGeometry(t.r * 0.96, t.h * 0.45, 12),
+          snowMat
+        );
+        snowCap.position.y = t.y + t.h * 0.29;
+        treeGroup.add(snowCap);
+      });
+
+      // 꼭대기 황금 별
+      const starMat = new THREE.MeshStandardMaterial({
+        color: 0xfde047,
+        emissive: 0xfbbf24,
+        emissiveIntensity: 2.5,
+        roughness: 0.2
+      });
+      ornamentMaterials.push(starMat);
+
+      const starMesh = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.34, 0),
+        starMat
+      );
+      starMesh.position.y = 5.25;
+      starMesh.rotation.y = Math.PI / 4;
+      treeGroup.add(starMesh);
+
+      treeTopLight = new THREE.PointLight(0xffd166, 2.2, 9, 1.6);
+      treeTopLight.position.set(0, 4.8, 0);
+      treeGroup.add(treeTopLight);
+
+      // 나선형 꼬마전구 오너먼트
+      const bulbColors = [0xff595e, 0xffca3a, 0x8ac926, 0x1982c4, 0xff924c];
+      const bulbGeo = new THREE.SphereGeometry(0.085, 8, 8);
+
+      for (let i = 0; i < 36; i++) {
+        const ratio = i / 36;
+        const angle = i * 0.95;
+        const yPos = 1.1 + ratio * 3.6;
+        const radius = (1 - ratio * 0.75) * 1.62;
+        const c = bulbColors[i % bulbColors.length];
+        const bMat = new THREE.MeshStandardMaterial({
+          color: c,
+          emissive: c,
+          emissiveIntensity: 2.2
+        });
+        ornamentMaterials.push(bMat);
+        const bulb = new THREE.Mesh(bulbGeo, bMat);
+        bulb.position.set(Math.cos(angle) * radius, yPos, Math.sin(angle) * radius);
+        treeGroup.add(bulb);
+      }
+    }
+
+    createCenterChristmasTree(0, 0);
+
+    // ==========================================
+    // 7. 눈 덮인 소나무 숲 생성
+    // ==========================================
+    function createPineTree(x, y, z, scale = 1) {
+      const tree = new THREE.Group();
+      tree.position.set(x, y, z);
+      tree.scale.setScalar(scale);
+      worldGroup.add(tree);
+
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.24, 0.9, 7),
+        darkWoodMat
+      );
+      trunk.position.y = 0.45;
+      trunk.castShadow = true;
+      tree.add(trunk);
+
+      const levels = [
+        { r: 1.05, h: 1.35, y: 1.15 },
+        { r: 0.82, h: 1.15, y: 1.88 },
+        { r: 0.56, h: 0.95, y: 2.52 }
+      ];
+
+      levels.forEach((lv) => {
+        const foliage = new THREE.Mesh(
+          new THREE.ConeGeometry(lv.r, lv.h, 8),
+          foliageMat
+        );
+        foliage.position.y = lv.y;
+        foliage.rotation.y = Math.random() * Math.PI;
+        foliage.castShadow = true;
+        foliage.receiveShadow = true;
+        tree.add(foliage);
+
+        const snowLayer = new THREE.Mesh(
+          new THREE.ConeGeometry(lv.r * 0.92, lv.h * 0.44, 8),
+          snowMat
+        );
+        snowLayer.position.y = lv.y + lv.h * 0.29;
+        snowLayer.rotation.y = foliage.rotation.y;
+        tree.add(snowLayer);
+      });
+
+      return tree;
+    }
+
+    const pineLocations = [
+      [-4.2, 0.1, -9.5, 1.25], [4.5, 0.1, -9.8, 1.3], [-9.8, 0.3, -10.8, 1.45],
+      [9.5, 0.3, -11.5, 1.4], [-15.5, 0.5, -2.2, 1.35], [-16.2, 0.4, 2.5, 1.15],
+      [-13.5, 0.4, 7.8, 1.25], [-9.2, 0.2, 11.8, 1.1], [-1.8, 0.0, 14.8, 1.05],
+      [3.5, 0.0, 14.5, 1.2], [13.5, 0.3, 8.8, 1.3], [16.2, 0.4, 4.5, 1.15],
+      [15.8, 0.3, -1.8, 1.35], [16.5, 0.5, -6.5, 1.2], [0.5, 0.7, -13.5, 1.5],
+      [-6.8, 0.6, -13.8, 1.3], [6.8, 0.6, -14.2, 1.35], [-17.5, 0.6, -8.5, 1.5],
+      [17.5, 0.5, -11.0, 1.45], [-11.5, 0.1, -0.5, 0.9], [9.8, 0.0, -0.8, 0.85],
+      [-3.5, 0.0, 5.8, 0.82], [11.8, 0.1, 12.2, 1.1]
+    ];
+
+    pineLocations.forEach(([x, y, z, s]) => createPineTree(x, y, z, s));
+
+    // ==========================================
+    // 8. 가로등 & 눈사람 & 작은 소품들
+    // ==========================================
+    const lampLights = [];
+    const lampGlassMaterials = [];
+
+    function createStreetLamp(x, z) {
+      const lamp = new THREE.Group();
+      lamp.position.set(x, 0, z);
+      worldGroup.add(lamp);
+
+      const postMat = new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        roughness: 0.4,
+        metalness: 0.7
+      });
+
+      const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.14, 0.2, 0.35, 8),
+        postMat
+      );
+      base.position.y = 0.175;
+      lamp.add(base);
+
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.07, 2.2, 8),
+        postMat
+      );
+      pole.position.y = 1.25;
+      pole.castShadow = true;
+      lamp.add(pole);
+
+      const glassMat = new THREE.MeshStandardMaterial({
+        color: 0xfff3b0,
+        emissive: 0xffaa2b,
+        emissiveIntensity: 2.6,
+        roughness: 0.15
+      });
+      lampGlassMaterials.push(glassMat);
+
+      const lantern = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.12, 0.34, 6),
+        glassMat
+      );
+      lantern.position.y = 2.48;
+      lamp.add(lantern);
+
+      const cap = new THREE.Mesh(
+        new THREE.ConeGeometry(0.24, 0.2, 6),
+        postMat
+      );
+      cap.position.y = 2.74;
+      lamp.add(cap);
+
+      const light = new THREE.PointLight(0xffb74d, 1.65, 7.5, 1.8);
+      light.position.set(0, 2.45, 0);
+      lamp.add(light);
+      lampLights.push(light);
+    }
+
+    const lampPositions = [
+      [-2.4, -2.5], [2.4, -2.5],
+      [-3.2, 2.4], [2.8, 2.4],
+      [-1.5, 7.5], [2.2, 6.8],
+      [-6.8, 5.8], [7.8, 0.2]
+    ];
+    lampPositions.forEach(([lx, lz]) => createStreetLamp(lx, lz));
+
+    // 귀여운 눈사람 만들기
+    function createSnowman(x, z, rotY = 0) {
+      const sm = new THREE.Group();
+      sm.position.set(x, 0, z);
+      sm.rotation.y = rotY;
+      worldGroup.add(sm);
+
+      const b1 = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 16), snowMat);
+      b1.position.y = 0.38;
+      b1.castShadow = true;
+      sm.add(b1);
+
+      const b2 = new THREE.Mesh(new THREE.SphereGeometry(0.31, 16, 16), snowMat);
+      b2.position.y = 0.92;
+      b2.castShadow = true;
+      sm.add(b2);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.23, 16, 16), snowMat);
+      head.position.y = 1.35;
+      head.castShadow = true;
+      sm.add(head);
+
+      // 당근 코
+      const nose = new THREE.Mesh(
+        new THREE.ConeGeometry(0.045, 0.22, 8),
+        new THREE.MeshStandardMaterial({ color: 0xf97316 })
+      );
+      nose.position.set(0, 1.35, 0.28);
+      nose.rotation.x = Math.PI / 2;
+      sm.add(nose);
+
+      // 빨간 목도리
+      const scarfMat = new THREE.MeshStandardMaterial({ color: 0xdc2626 });
+      const scarf = new THREE.Mesh(
+        new THREE.TorusGeometry(0.21, 0.055, 8, 16),
+        scarfMat
+      );
+      scarf.position.y = 1.15;
+      scarf.rotation.x = Math.PI / 2;
+      sm.add(scarf);
+
+      // 모자
+      const hatMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+      const brim = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.26, 0.26, 0.04, 16),
+        hatMat
+      );
+      brim.position.y = 1.55;
+      sm.add(brim);
+
+      const topHat = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.17, 0.17, 0.26, 16),
+        hatMat
+      );
+      topHat.position.y = 1.68;
+      sm.add(topHat);
+    }
+
+    createSnowman(-2.1, 4.3, 0.4);
+    createSnowman(3.3, 4.8, -0.6);
+    createSnowman(8.8, 5.2, -1.2);
+
+    // ==========================================
+    // 9. 굴뚝 연기 파티클 (따뜻한 겨울 마을 분위기)
+    // ==========================================
+    const smokePuffs = [];
+    const smokeMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
+      transparent: true,
+      opacity: 0.45,
+      roughness: 1
+    });
+    const smokeGeo = new THREE.SphereGeometry(0.18, 10, 10);
+
+    chimneyEmitters.forEach((emitter, idx) => {
+      for (let i = 0; i < 5; i++) {
+        const puff = new THREE.Mesh(smokeGeo, smokeMat.clone());
+        scene.add(puff);
+        smokePuffs.push({
+          mesh: puff,
+          emitter,
+          offset: (i / 5) + idx * 0.17
+        });
+      }
+    });
+
+    // ==========================================
+    // 10. 밤하늘 별 & 달 & 계속 내리는 3D 눈 파티클
+    // ==========================================
+    // 밤하늘 별빛
+    const starCount = 450;
+    const starPositions = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      const r = 75 + Math.random() * 35;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * (Math.PI * 0.44);
+      starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      starPositions[i * 3 + 1] = r * Math.cos(phi) + 8;
+      starPositions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    }
+    const starsGeo = new THREE.BufferGeometry();
+    starsGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    const starsMat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 0.65,
+      transparent: true,
+      opacity: 0.85
+    });
+    const starsPoints = new THREE.Points(starsGeo, starsMat);
+    scene.add(starsPoints);
+
+    // 밤하늘 보름달 / 낮 태양 구체
+    const celestialGroup = new THREE.Group();
+    scene.add(celestialGroup);
+
+    const moonMat = new THREE.MeshBasicMaterial({ color: 0xfef9c3 });
+    const moonMesh = new THREE.Mesh(new THREE.SphereGeometry(2.6, 24, 24), moonMat);
+    moonMesh.position.set(-28, 34, -42);
+    celestialGroup.add(moonMesh);
+
+    // 계속 내리는 눈 (Continuous Snowfall System)
+    const MAX_SNOW = 3200;
+    const snowGeo = new THREE.BufferGeometry();
+    const snowPos = new Float32Array(MAX_SNOW * 3);
+    const snowVel = new Float32Array(MAX_SNOW * 3); // speedY, swayAmp, swayFreq
+
+    for (let i = 0; i < MAX_SNOW; i++) {
+      snowPos[i * 3] = (Math.random() - 0.5) * 62;
+      snowPos[i * 3 + 1] = Math.random() * 34;
+      snowPos[i * 3 + 2] = (Math.random() - 0.5) * 62;
+
+      snowVel[i * 3] = 1.6 + Math.random() * 2.4;      // 낙하 속도
+      snowVel[i * 3 + 1] = 0.4 + Math.random() * 1.1;  // 좌우 흔들림 폭
+      snowVel[i * 3 + 2] = Math.random() * Math.PI * 2; // 위상
+    }
+
+    snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+
+    const snowParticleMat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      map: snowflakeTexture,
+      size: 0.52,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false
+    });
+
+    const snowSystem = new THREE.Points(snowGeo, snowParticleMat);
+    scene.add(snowSystem);
+
+    // ==========================================
+    // 11. 조명 & 낮/밤 전환 시스템
+    // ==========================================
+    const ambientLight = new THREE.AmbientLight(0x2a3b68, 0.75);
+    scene.add(ambientLight);
+
+    const hemiLight = new THREE.HemisphereLight(0x3b5284, 0x161f33, 0.65);
+    scene.add(hemiLight);
+
+    const mainDirLight = new THREE.DirectionalLight(0x8da8df, 0.9);
+    mainDirLight.position.set(-20, 26, -24);
+    mainDirLight.castShadow = true;
+    mainDirLight.shadow.mapSize.width = 2048;
+    mainDirLight.shadow.mapSize.height = 2048;
+    mainDirLight.shadow.camera.near = 2;
+    mainDirLight.shadow.camera.far = 85;
+    const d = 28;
+    mainDirLight.shadow.camera.left = -d;
+    mainDirLight.shadow.camera.right = d;
+    mainDirLight.shadow.camera.top = d;
+    mainDirLight.shadow.camera.bottom = -d;
+    mainDirLight.shadow.bias = -0.0005;
+    scene.add(mainDirLight);
+
+    scene.fog = new THREE.FogExp2(0x0b1329, 0.0135);
+    scene.background = new THREE.Color(0x0b1329);
+
+    // 밤과 낮 테마 파라미터
+    const nightTheme = {
+      bg: new THREE.Color(0x0b1329),
+      fogColor: new THREE.Color(0x0b1329),
+      fogDensity: 0.0135,
+      ambientColor: new THREE.Color(0x2a3b68),
+      ambientIntensity: 0.75,
+      hemiSky: new THREE.Color(0x3b5284),
+      hemiGround: new THREE.Color(0x161f33),
+      hemiIntensity: 0.65,
+      dirColor: new THREE.Color(0x8da8df),
+      dirIntensity: 0.92,
+      dirPos: new THREE.Vector3(-20, 26, -24),
+      windowEmissive: 2.35,
+      houseLightIntensity: 2.6,
+      lampIntensity: 1.65,
+      starOpacity: 0.88
+    };
+
+    const dayTheme = {
+      bg: new THREE.Color(0x9bd2f5),
+      fogColor: new THREE.Color(0xbce3fa),
+      fogDensity: 0.0085,
+      ambientColor: new THREE.Color(0xdbeafe),
+      ambientIntensity: 1.15,
+      hemiSky: new THREE.Color(0xe0f2fe),
+      hemiGround: new THREE.Color(0x94a3b8),
+      hemiIntensity: 0.95,
+      dirColor: new THREE.Color(0xfff7ed),
+      dirIntensity: 2.35,
+      dirPos: new THREE.Vector3(24, 34, 18),
+      windowEmissive: 0.18,
+      houseLightIntensity: 0.0,
+      lampIntensity: 0.0,
+      starOpacity: 0.0
+    };
+
+    let isNight = true;
+    let transitionProgress = 0; // 0 = Night, 1 = Day
+    let targetProgress = 0;
+
+    // 눈 강도 모드 (0: 함박눈, 1: 잔잔한 눈, 2: 눈보라)
+    const snowModes = [
+      { label: '눈: 함박눈', count: 2200, speedMult: 1.0, size: 0.52 },
+      { label: '눈: 눈보라', count: 3200, speedMult: 1.75, size: 0.62 },
+      { label: '눈: 가랑눈', count: 1100, speedMult: 0.65, size: 0.42 }
+    ];
+    let currentSnowModeIndex = 0;
+    snowGeo.setDrawRange(0, snowModes[0].count);
+
+    // ==========================================
+    // 12. UI 이벤트 및 마우스 클릭 인터랙션
+    // ==========================================
+    const toggleDayNightBtn = document.getElementById('toggle-day-night-btn');
+    const dayNightIcon = document.getElementById('day-night-icon');
+    const dayNightLabel = document.getElementById('day-night-label');
+    const badgeIcon = document.getElementById('badge-icon');
+    const badgeText = document.getElementById('badge-text');
+
+    const toggleSnowBtn = document.getElementById('toggle-snow-btn');
+    const snowLabel = document.getElementById('snow-label');
+
+    const toggleRotateBtn = document.getElementById('toggle-rotate-btn');
+    const rotateLabel = document.getElementById('rotate-label');
+    const toastEl = document.getElementById('toast-msg');
+
+    let toastTimer = null;
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add('show');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toastEl.classList.remove('show');
+      }, 2400);
+    }
+
+    toggleDayNightBtn.addEventListener('click', () => {
+      isNight = !isNight;
+      targetProgress = isNight ? 0 : 1;
+
+      if (isNight) {
+        document.body.classList.remove('day-mode');
+        dayNightIcon.textContent = '☀️';
+        dayNightLabel.textContent = '낮으로 바꾸기';
+        badgeIcon.textContent = '🌙';
+        badgeText.textContent = '고요한 겨울밤 · 창문 불빛 켜짐';
+        showToast('🌙 밤이 찾아와 마을의 창문과 가로등에 따뜻한 불이 켜집니다.');
+      } else {
+        document.body.classList.add('day-mode');
+        dayNightIcon.textContent = '🌙';
+        dayNightLabel.textContent = '밤으로 바꾸기';
+        badgeIcon.textContent = '☀️';
+        badgeText.textContent = '눈부신 겨울낮 · 맑은 햇살';
+        showToast('☀️ 맑은 겨울 아침이 밝았습니다!');
+      }
+    });
+
+    toggleSnowBtn.addEventListener('click', () => {
+      currentSnowModeIndex = (currentSnowModeIndex + 1) % snowModes.length;
+      const mode = snowModes[currentSnowModeIndex];
+      snowLabel.textContent = mode.label;
+      snowGeo.setDrawRange(0, mode.count);
+      snowParticleMat.size = mode.size;
+      showToast(`❄️ ${mode.label} 모드로 변경되었습니다.`);
+    });
+
+    toggleRotateBtn.addEventListener('click', () => {
+      controls.autoRotate = !controls.autoRotate;
+      rotateLabel.textContent = controls.autoRotate
+        ? '자동 회전: 켜짐'
+        : '자동 회전: 꺼짐';
+    });
+
+    // 집 클릭으로 개별 창문 불빛 토글하기 (드래그와 클릭 구분)
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let pointerDownPos = { x: 0, y: 0 };
+
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      pointerDownPos.x = e.clientX;
+      pointerDownPos.y = e.clientY;
+    });
+
+    renderer.domElement.addEventListener('pointerup', (e) => {
+      const dist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+      if (dist > 6) return; // 드래그였으면 무시
+
+      pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+      pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(pointer, camera);
+      const intersects = raycaster.intersectObjects(interactiveHouses, false);
+      if (intersects.length > 0) {
+        const hitHouse = intersects[0].object.userData.parentHouse;
+        if (hitHouse) {
+          hitHouse.userData.lightsOn = !hitHouse.userData.lightsOn;
+          const stateStr = hitHouse.userData.lightsOn ? '불을 켰습니다 ✨' : '불을 껐습니다 💤';
+          showToast(`🏠 [${hitHouse.userData.name}] 창문 ${stateStr}`);
+        }
+      }
+    });
+
+    // ==========================================
+    // 13. 애니메이션 루프
+    // ==========================================
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = Math.min(clock.getDelta(), 0.1);
+      const elapsed = clock.getElapsedTime();
+
+      // 1) 낮/밤 부드러운 보간 (Lerp)
+      if (Math.abs(transitionProgress - targetProgress) > 0.001) {
+        transitionProgress += (targetProgress - transitionProgress) * Math.min(delta * 3.2, 1);
+      } else {
+        transitionProgress = targetProgress;
+      }
+
+      const t = transitionProgress; // 0: 밤, 1: 낮
+      scene.background.lerpColors(nightTheme.bg, dayTheme.bg, t);
+      scene.fog.color.lerpColors(nightTheme.fogColor, dayTheme.fogColor, t);
+      scene.fog.density = THREE.MathUtils.lerp(nightTheme.fogDensity, dayTheme.fogDensity, t);
+
+      ambientLight.color.lerpColors(nightTheme.ambientColor, dayTheme.ambientColor, t);
+      ambientLight.intensity = THREE.MathUtils.lerp(nightTheme.ambientIntensity, dayTheme.ambientIntensity, t);
+
+      hemiLight.color.lerpColors(nightTheme.hemiSky, dayTheme.hemiSky, t);
+      hemiLight.groundColor.lerpColors(nightTheme.hemiGround, dayTheme.hemiGround, t);
+      hemiLight.intensity = THREE.MathUtils.lerp(nightTheme.hemiIntensity, dayTheme.hemiIntensity, t);
+
+      mainDirLight.color.lerpColors(nightTheme.dirColor, dayTheme.dirColor, t);
+      mainDirLight.intensity = THREE.MathUtils.lerp(nightTheme.dirIntensity, dayTheme.dirIntensity, t);
+      mainDirLight.position.lerpVectors(nightTheme.dirPos, dayTheme.dirPos, t);
+
+      // 달/해 위치와 색상
+      moonMesh.position.lerpVectors(
+        new THREE.Vector3(-28, 34, -42),
+        new THREE.Vector3(32, 42, -35),
+        t
+      );
+      moonMat.color.lerpColors(new THREE.Color(0xfef9c3), new THREE.Color(0xffffff), t);
+      starsMat.opacity = THREE.MathUtils.lerp(nightTheme.starOpacity, dayTheme.starOpacity, t);
+
+      // 2) 집 창문 불빛 & 포인트 라이트 업데이트 (은은한 촛불/벽난로 깜빡임 포함)
+      houses.forEach((hGroup, idx) => {
+        const isHouseOn = hGroup.userData.lightsOn;
+        const flicker = 0.94 + Math.sin(elapsed * 3.5 + idx * 1.7) * 0.06;
+        const baseEmissive = isHouseOn
+          ? THREE.MathUtils.lerp(nightTheme.windowEmissive, dayTheme.windowEmissive, t) * flicker
+          : 0.04;
+        hGroup.userData.winMat.emissiveIntensity = baseEmissive;
+
+        const baseLight = isHouseOn
+          ? THREE.MathUtils.lerp(nightTheme.houseLightIntensity, dayTheme.houseLightIntensity, t) * flicker
+          : 0;
+        hGroup.userData.lights[0].intensity = baseLight;
+        hGroup.userData.lights[1].intensity = baseLight * 0.6;
+      });
+
+      // 가로등 & 크리스마스 트리 조명 업데이트
+      const lampTarget = THREE.MathUtils.lerp(nightTheme.lampIntensity, dayTheme.lampIntensity, t);
+      lampLights.forEach((l, i) => {
+        l.intensity = lampTarget * (0.95 + Math.sin(elapsed * 4 + i) * 0.05);
+      });
+      lampGlassMaterials.forEach((gm) => {
+        gm.emissiveIntensity = THREE.MathUtils.lerp(2.6, 0.25, t);
+      });
+
+      ornamentMaterials.forEach((om, i) => {
+        const twinkle = 0.75 + 0.35 * Math.sin(elapsed * 3.8 + i * 0.9);
+        om.emissiveIntensity = THREE.MathUtils.lerp(2.3, 0.4, t) * twinkle;
+      });
+      if (treeTopLight) {
+        treeTopLight.intensity = THREE.MathUtils.lerp(2.2, 0.15, t);
+      }
+
+      // 3) 계속 내리는 눈 애니메이션
+      const snowMode = snowModes[currentSnowModeIndex];
+      const posArr = snowGeo.attributes.position.array;
+      const activeCount = snowMode.count;
+      const windX = Math.sin(elapsed * 0.35) * 0.65;
+
+      for (let i = 0; i < activeCount; i++) {
+        const i3 = i * 3;
+        const speedY = snowVel[i3] * snowMode.speedMult;
+        const swayAmp = snowVel[i3 + 1];
+        const phase = snowVel[i3 + 2];
+
+        posArr[i3 + 1] -= speedY * delta;
+        posArr[i3] += (Math.sin(elapsed * 1.4 + phase) * swayAmp + windX) * delta;
+        posArr[i3 + 2] += Math.cos(elapsed * 1.1 + phase) * swayAmp * 0.6 * delta;
+
+        // 땅 아래로 내려가면 다시 하늘 위에서 내려오도록 순환
+        if (posArr[i3 + 1] < -0.5) {
+          posArr[i3 + 1] = 32 + Math.random() * 4;
+          posArr[i3] = (Math.random() - 0.5) * 60;
+          posArr[i3 + 2] = (Math.random() - 0.5) * 60;
+        }
+      }
+      snowGeo.attributes.position.needsUpdate = true;
+
+      // 4) 굴뚝 연기 애니메이션
+      const worldVec = new THREE.Vector3();
+      smokePuffs.forEach((sp) => {
+        const cycle = (elapsed * 0.38 + sp.offset) % 1;
+        sp.emitter.getWorldPosition(worldVec);
+        sp.mesh.position.set(
+          worldVec.x + Math.sin(cycle * 6 + sp.offset * 10) * 0.25 + cycle * 0.4,
+          worldVec.y + cycle * 2.6,
+          worldVec.z + Math.cos(cycle * 5 + sp.offset * 10) * 0.2
+        );
+        const s = 0.55 + cycle * 1.35;
+        sp.mesh.scale.setScalar(s);
+        sp.mesh.material.opacity = (1 - cycle) * 0.38;
+      });
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    // 초기 안내 토스트 표시
+    setTimeout(() => {
+      showToast('✨ 마우스로 드래그해 눈 내리는 마을을 자유롭게 둘러보세요!');
+    }, 900);
+
+    // 반응형 리사이즈 처리
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
