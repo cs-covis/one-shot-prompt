@@ -1,0 +1,1369 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>견적서 · 거래명세서</title>
+  <style>
+    :root {
+      --bg-desk: #edf1f6;
+      --paper-bg: #ffffff;
+      --ink: #111827;
+      --ink-muted: #4b5563;
+      --line: #1f2937;
+      --line-soft: #cbd5e1;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --hover-tint: rgba(37, 99, 235, 0.06);
+      --focus-tint: rgba(37, 99, 235, 0.11);
+      --danger: #dc2626;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-desk);
+      color: var(--ink);
+      font-family: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      font-size: 13px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 상단 툴바 */
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid #dbe2ea;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+    }
+
+    .btn {
+      appearance: none;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+      color: #1e293b;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: background-color 0.15s, border-color 0.15s, transform 0.05s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+
+    .btn-mode.active {
+      background: #0f766e;
+      border-color: #0f766e;
+      color: #ffffff;
+    }
+
+    .btn-mode.active:hover {
+      background: #115e59;
+      border-color: #115e59;
+    }
+
+    .status-toast {
+      font-size: 12px;
+      color: #0f766e;
+      font-weight: 600;
+      margin-left: 8px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .status-toast.show {
+      opacity: 1;
+    }
+
+    /* 메인 작업 영역: A4 용지 + 저장 목록 */
+    .workspace {
+      max-width: 1180px;
+      margin: 22px auto 40px;
+      padding: 0 16px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 24px;
+    }
+
+    /* A4 세로 종이 */
+    .paper {
+      width: 210mm;
+      min-height: 297mm;
+      background: var(--paper-bg);
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12), 0 1px 4px rgba(15, 23, 42, 0.06);
+      padding: 14mm 14mm 12mm;
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 종이 위 인라인 입력 */
+    .doc-input {
+      border: none;
+      background: transparent;
+      outline: none;
+      font-family: inherit;
+      font-size: inherit;
+      font-weight: inherit;
+      color: inherit;
+      width: 100%;
+      padding: 2px 4px;
+      border-radius: 3px;
+      transition: background-color 0.12s, box-shadow 0.12s;
+    }
+
+    .doc-input:hover {
+      background: var(--hover-tint);
+    }
+
+    .doc-input:focus {
+      background: var(--focus-tint);
+      box-shadow: inset 0 -1.5px 0 var(--accent);
+    }
+
+    .doc-input::placeholder {
+      color: #cbd5e1;
+    }
+
+    .doc-input.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .doc-input.center {
+      text-align: center;
+    }
+
+    /* 문서 제목 */
+    .doc-title-wrap {
+      text-align: center;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 2.5px double var(--line);
+    }
+
+    .doc-title {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: 0.25em;
+      padding-left: 0.25em;
+      color: var(--ink);
+    }
+
+    /* 상단 정보 (왼쪽: 받는곳+문서정보, 오른쪽: 공급자) */
+    .top-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.08fr;
+      gap: 16px;
+      margin-bottom: 14px;
+      align-items: stretch;
+    }
+
+    .left-info {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .recipient-box {
+      border-bottom: 1.5px solid var(--line);
+      padding-bottom: 8px;
+    }
+
+    .recipient-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ink-muted);
+      margin-bottom: 4px;
+    }
+
+    .recipient-row {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+
+    .recipient-company {
+      font-size: 16px;
+      font-weight: 700;
+      flex: 1.2;
+      min-width: 0;
+    }
+
+    .recipient-person {
+      font-size: 14px;
+      font-weight: 600;
+      flex: 0.8;
+      min-width: 0;
+    }
+
+    .honorific {
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      padding-left: 2px;
+    }
+
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+
+    .meta-table th {
+      text-align: left;
+      width: 78px;
+      padding: 3px 6px 3px 0;
+      color: var(--ink-muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .meta-table td {
+      padding: 2px 0;
+    }
+
+    .meta-table tr.hidden {
+      display: none;
+    }
+
+    /* 공급자 표 */
+    .supplier-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid var(--line);
+      font-size: 12px;
+      table-layout: fixed;
+    }
+
+    .supplier-table th,
+    .supplier-table td {
+      border: 1px solid #94a3b8;
+      padding: 3px 5px;
+      vertical-align: middle;
+    }
+
+    .supplier-table .sup-vertical {
+      width: 26px;
+      text-align: center;
+      font-weight: 700;
+      background: #f8fafc;
+      letter-spacing: 0.15em;
+      writing-mode: vertical-rl;
+      text-orientation: upright;
+      padding: 4px 2px;
+    }
+
+    .supplier-table .sup-label {
+      width: 66px;
+      text-align: center;
+      font-weight: 600;
+      background: #f8fafc;
+      color: #334155;
+      white-space: nowrap;
+    }
+
+    /* 한글 합계 금액 배너 */
+    .total-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1.5px solid var(--line);
+      border-bottom: 1.5px solid var(--line);
+      background: #f8fafc;
+      padding: 7px 10px;
+      margin-bottom: 10px;
+      gap: 10px;
+    }
+
+    .total-banner-label {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #334155;
+      white-space: nowrap;
+    }
+
+    .total-banner-value {
+      font-size: 15.5px;
+      font-weight: 800;
+      color: var(--ink);
+      text-align: right;
+      word-break: keep-all;
+    }
+
+    /* 품목 표 */
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid var(--line);
+      font-size: 12px;
+      table-layout: fixed;
+    }
+
+    .items-table th {
+      background: #f1f5f9;
+      border: 1px solid #94a3b8;
+      border-bottom: 1.5px solid var(--line);
+      padding: 5px 4px;
+      font-weight: 700;
+      text-align: center;
+      color: #1e293b;
+      white-space: nowrap;
+    }
+
+    .items-table td {
+      border: 1px solid #cbd5e1;
+      padding: 2px 3px;
+      vertical-align: middle;
+    }
+
+    .items-table tbody tr:hover td {
+      background: #fafcff;
+    }
+
+    .col-no { width: 34px; text-align: center; color: var(--ink-muted); font-weight: 600; }
+    .col-name { width: auto; }
+    .col-spec { width: 100px; }
+    .col-qty { width: 58px; }
+    .col-price { width: 92px; }
+    .col-amount { width: 100px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; padding-right: 6px !important; }
+    .col-note { width: 82px; }
+    .col-del { width: 28px; text-align: center; }
+
+    .btn-del-row {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 3px 5px;
+      border-radius: 4px;
+      transition: color 0.12s, background-color 0.12s;
+    }
+
+    .btn-del-row:hover {
+      color: var(--danger);
+      background: #fee2e2;
+    }
+
+    /* 표 아래 합계 요약 */
+    .summary-wrap {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-top: 10px;
+      gap: 16px;
+    }
+
+    .paste-hint {
+      font-size: 11px;
+      color: #64748b;
+      line-height: 1.5;
+      padding-top: 4px;
+    }
+
+    .summary-table {
+      width: 260px;
+      margin-left: auto;
+      border-collapse: collapse;
+      border: 1.5px solid var(--line);
+      font-size: 12.5px;
+    }
+
+    .summary-table th,
+    .summary-table td {
+      border: 1px solid #94a3b8;
+      padding: 5px 8px;
+    }
+
+    .summary-table th {
+      width: 108px;
+      text-align: left;
+      background: #f8fafc;
+      font-weight: 700;
+      color: #334155;
+    }
+
+    .summary-table td {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+
+    .summary-table tr.grand-total th,
+    .summary-table tr.grand-total td {
+      background: #f1f5f9;
+      font-weight: 800;
+      font-size: 13.5px;
+      border-top: 1.5px solid var(--line);
+    }
+
+    /* 오른쪽 저장 목록 패널 */
+    .saved-panel {
+      width: 300px;
+      flex: 0 0 300px;
+      background: #ffffff;
+      border: 1px solid #dbe2ea;
+      border-radius: 10px;
+      box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+      padding: 14px;
+      position: sticky;
+      top: 72px;
+      max-height: calc(100vh - 96px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .saved-panel-title {
+      margin: 0 0 10px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .saved-count {
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+    }
+
+    .saved-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .saved-empty {
+      padding: 24px 8px;
+      text-align: center;
+      color: #94a3b8;
+      font-size: 12.5px;
+    }
+
+    .saved-item {
+      border: 1px solid #e2e8f0;
+      border-radius: 7px;
+      padding: 9px 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, background-color 0.15s;
+    }
+
+    .saved-item:hover {
+      border-color: var(--accent);
+      background: #f8faff;
+    }
+
+    .saved-item.current {
+      border-color: var(--accent);
+      background: #eff6ff;
+    }
+
+    .saved-item-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 3px;
+    }
+
+    .saved-no {
+      font-weight: 700;
+      font-size: 12.5px;
+      color: #1e293b;
+    }
+
+    .saved-date {
+      font-size: 11.5px;
+      color: #64748b;
+    }
+
+    .saved-item-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+
+    .saved-recipient {
+      color: #334155;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .saved-total {
+      font-weight: 700;
+      color: #0f172a;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    /* 좁은 화면: 목록을 아래로 */
+    @media (max-width: 1180px) {
+      .workspace {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .saved-panel {
+        width: 210mm;
+        max-width: 100%;
+        flex: none;
+        position: static;
+        max-height: none;
+      }
+    }
+
+    @media (max-width: 820px) {
+      .paper {
+        width: 100%;
+        min-height: auto;
+        padding: 16px 12px;
+      }
+
+      .top-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* 인쇄 (A4 세로 1장) */
+    @page {
+      size: A4 portrait;
+      margin: 10mm 12mm;
+    }
+
+    @media print {
+      html, body {
+        background: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      .no-print,
+      .toolbar,
+      .saved-panel,
+      .paste-hint,
+      .col-del {
+        display: none !important;
+      }
+
+      .workspace {
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+        max-width: none !important;
+      }
+
+      .paper {
+        width: 100% !important;
+        min-height: 0 !important;
+        height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+      }
+
+      .doc-input,
+      .doc-input:hover,
+      .doc-input:focus {
+        background: transparent !important;
+        box-shadow: none !important;
+      }
+
+      .doc-input::placeholder {
+        color: transparent !important;
+      }
+
+      .items-table tbody tr:hover td {
+        background: transparent !important;
+      }
+
+      input[type="date"]::-webkit-calendar-picker-indicator {
+        display: none;
+        -webkit-appearance: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="toolbar no-print">
+    <button type="button" class="btn" id="btnAddRow">+ 품목 추가</button>
+    <button type="button" class="btn btn-mode" id="btnToggleMode">거래명세서로 보기</button>
+    <button type="button" class="btn" id="btnSave">저장</button>
+    <button type="button" class="btn" id="btnNew">새 견적서</button>
+    <button type="button" class="btn btn-primary" id="btnPrint">인쇄</button>
+    <span class="status-toast" id="statusToast" aria-live="polite"></span>
+  </header>
+
+  <main class="workspace">
+    <section class="paper" id="paper" aria-label="문서 편집 영역">
+      <div class="doc-title-wrap">
+        <h1 class="doc-title" id="docTitle">견 적 서</h1>
+      </div>
+
+      <div class="top-grid">
+        <div class="left-info">
+          <div class="recipient-box">
+            <div class="recipient-label" id="recipientLabel">받는 곳</div>
+            <div class="recipient-row">
+              <input type="text" class="doc-input recipient-company" id="recipientCompany" placeholder="회사명" aria-label="받는 곳 회사명" />
+              <input type="text" class="doc-input recipient-person" id="recipientPerson" placeholder="담당자" aria-label="받는 곳 담당자" />
+              <span class="honorific">귀하</span>
+            </div>
+          </div>
+
+          <table class="meta-table">
+            <tbody>
+              <tr>
+                <th id="docNoLabel">견적번호</th>
+                <td><input type="text" class="doc-input" id="quoteNo" aria-label="견적번호" /></td>
+              </tr>
+              <tr>
+                <th id="docDateLabel">견적일</th>
+                <td><input type="date" class="doc-input" id="quoteDate" aria-label="견적일" /></td>
+              </tr>
+              <tr id="validUntilRow">
+                <th>유효기간</th>
+                <td><input type="date" class="doc-input" id="validUntil" aria-label="유효기간" /></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <table class="supplier-table" aria-label="공급자 정보">
+          <tbody>
+            <tr>
+              <th class="sup-vertical" rowspan="5">공급자</th>
+              <th class="sup-label">상 호</th>
+              <td><input type="text" class="doc-input" id="supName" placeholder="상호명" aria-label="공급자 상호" /></td>
+            </tr>
+            <tr>
+              <th class="sup-label">대 표 자</th>
+              <td><input type="text" class="doc-input" id="supRep" placeholder="대표자명" aria-label="공급자 대표자" /></td>
+            </tr>
+            <tr>
+              <th class="sup-label">사업자번호</th>
+              <td><input type="text" class="doc-input" id="supBizNo" placeholder="000-00-00000" aria-label="사업자등록번호" /></td>
+            </tr>
+            <tr>
+              <th class="sup-label">주 소</th>
+              <td><input type="text" class="doc-input" id="supAddress" placeholder="사업장 주소" aria-label="공급자 주소" /></td>
+            </tr>
+            <tr>
+              <th class="sup-label">전 화</th>
+              <td><input type="text" class="doc-input" id="supPhone" placeholder="연락처" aria-label="공급자 전화" /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="total-banner">
+        <span class="total-banner-label">합계금액 (부가세 포함)</span>
+        <span class="total-banner-value" id="koreanTotalDisplay">일금 영원정 (₩0)</span>
+      </div>
+
+      <table class="items-table" id="itemsTable">
+        <thead>
+          <tr>
+            <th class="col-no">번호</th>
+            <th class="col-name">품목명</th>
+            <th class="col-spec">규격</th>
+            <th class="col-qty">수량</th>
+            <th class="col-price">단가</th>
+            <th class="col-amount">금액</th>
+            <th class="col-note">비고</th>
+            <th class="col-del no-print" aria-label="삭제"></th>
+          </tr>
+        </thead>
+        <tbody id="itemsBody"></tbody>
+      </table>
+
+      <div class="summary-wrap">
+        <div class="paste-hint no-print">
+          팁: 엑셀·구글 시트에서 <strong>품목명 · 규격 · 수량 · 단가</strong> 열을 복사해 표의 아무 칸에 붙여넣으면(Ctrl+V) 여러 줄이 자동으로 추가됩니다.
+        </div>
+
+        <table class="summary-table" aria-label="금액 합계">
+          <tbody>
+            <tr>
+              <th>공급가액</th>
+              <td id="supplyTotalDisplay">0</td>
+            </tr>
+            <tr>
+              <th>부가세 (10%)</th>
+              <td id="vatTotalDisplay">0</td>
+            </tr>
+            <tr class="grand-total">
+              <th>합 계</th>
+              <td id="grandTotalDisplay">0</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <aside class="saved-panel no-print" aria-label="저장한 견적 목록">
+      <h2 class="saved-panel-title">
+        <span>저장한 견적</span>
+        <span class="saved-count" id="savedCount">0건</span>
+      </h2>
+      <ul class="saved-list" id="savedList"></ul>
+    </aside>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const STORAGE_DRAFT_KEY = 'quote_app_current_draft_v1';
+      const STORAGE_SAVED_KEY = 'quote_app_saved_list_v1';
+
+      // 날짜 유틸리티 (로컬 시간 기준 YYYY-MM-DD / YYYYMMDD)
+      function formatDateISO(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+
+      function addDaysISO(isoDate, days) {
+        const parts = String(isoDate || '').split('-').map(Number);
+        const base = (parts.length === 3 && parts.every((n) => Number.isFinite(n)))
+          ? new Date(parts[0], parts[1] - 1, parts[2])
+          : new Date();
+        base.setDate(base.getDate() + days);
+        return formatDateISO(base);
+      }
+
+      function getTodayCompact() {
+        return formatDateISO(new Date()).replace(/-/g, '');
+      }
+
+      // 숫자 파싱: 쉼표·'원'·공백 제거, 숫자가 아니거나 음수면 0
+      function parseNonNegNumber(raw) {
+        if (typeof raw === 'number') {
+          return Number.isFinite(raw) && raw > 0 ? raw : 0;
+        }
+        const cleaned = String(raw ?? '').replace(/[,\s원₩]/g, '').trim();
+        if (!cleaned) return 0;
+        const num = Number(cleaned);
+        if (!Number.isFinite(num) || num < 0) return 0;
+        return num;
+      }
+
+      function formatComma(num) {
+        const n = Math.floor(parseNonNegNumber(num));
+        return n.toLocaleString('ko-KR');
+      }
+
+      // 한글 금액 변환 (십·백·천 앞의 '일'을 생략하지 않음)
+      function numberToKoreanMoney(amount) {
+        const n = Math.floor(parseNonNegNumber(amount));
+        if (n === 0) return '일금 영원정';
+
+        const digits = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
+        const smallUnits = ['', '십', '백', '천'];
+        const largeUnits = ['', '만', '억', '조', '경'];
+
+        let remaining = n;
+        let chunkIdx = 0;
+        const parts = [];
+
+        while (remaining > 0) {
+          const chunk = remaining % 10000;
+          if (chunk > 0) {
+            let chunkStr = '';
+            let c = chunk;
+            for (let pos = 0; pos < 4 && c > 0; pos++) {
+              const d = c % 10;
+              if (d > 0) {
+                chunkStr = digits[d] + smallUnits[pos] + chunkStr;
+              }
+              c = Math.floor(c / 10);
+            }
+            parts.unshift(chunkStr + (largeUnits[chunkIdx] || ''));
+          }
+          remaining = Math.floor(remaining / 10000);
+          chunkIdx++;
+        }
+
+        return `일금 ${parts.join('')}원정`;
+      }
+
+      function computeTotals(items) {
+        let supply = 0;
+        for (const item of items) {
+          const qty = parseNonNegNumber(item.qty);
+          const price = parseNonNegNumber(item.price);
+          supply += Math.floor(qty * price);
+        }
+        const vat = Math.floor(supply * 0.1);
+        const total = supply + vat;
+        return { supply, vat, total };
+      }
+
+      function loadSavedList() {
+        try {
+          const raw = localStorage.getItem(STORAGE_SAVED_KEY);
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+
+      function persistSavedList(list) {
+        try {
+          localStorage.setItem(STORAGE_SAVED_KEY, JSON.stringify(list));
+        } catch {
+          // localStorage unavailable
+        }
+      }
+
+      function generateNextQuoteNo(savedList, currentQuoteNo) {
+        const today = getTodayCompact();
+        const prefix = `Q-${today}-`;
+        let maxSeq = 0;
+
+        const candidates = savedList.map((q) => q.quoteNo);
+        if (currentQuoteNo) candidates.push(currentQuoteNo);
+
+        for (const no of candidates) {
+          if (typeof no === 'string' && no.startsWith(prefix)) {
+            const seq = parseInt(no.slice(prefix.length), 10);
+            if (Number.isFinite(seq) && seq > maxSeq) {
+              maxSeq = seq;
+            }
+          }
+        }
+        return `${prefix}${String(maxSeq + 1).padStart(2, '0')}`;
+      }
+
+      function createInitialSampleDoc() {
+        const todayISO = formatDateISO(new Date());
+        return {
+          mode: 'quote', // 'quote' | 'statement'
+          recipientCompany: '샘플상사',
+          recipientPerson: '김민수',
+          quoteNo: `Q-${getTodayCompact()}-01`,
+          quoteDate: todayISO,
+          validUntil: addDaysISO(todayISO, 30),
+          supplier: {
+            name: '예시오피스',
+            rep: '',
+            bizNo: '',
+            address: '',
+            phone: ''
+          },
+          items: [
+            { name: '노트북 거치대', spec: '알루미늄', qty: 3, price: 45000, note: '' },
+            { name: '무선 키보드', spec: '한글 각인', qty: 5, price: 32900, note: '' },
+            { name: '설치 출장비', spec: '서울', qty: 1, price: 150000, note: '' }
+          ]
+        };
+      }
+
+      function createBlankItem() {
+        return { name: '', spec: '', qty: '', price: '', note: '' };
+      }
+
+      function loadInitialDraft() {
+        try {
+          const raw = localStorage.getItem(STORAGE_DRAFT_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object' && Array.isArray(parsed.items)) {
+              return parsed;
+            }
+          }
+        } catch {
+          // ignore
+        }
+        return createInitialSampleDoc();
+      }
+
+      let state = loadInitialDraft();
+      let savedQuotes = loadSavedList();
+      let toastTimer = null;
+
+      function persistDraft() {
+        try {
+          localStorage.setItem(STORAGE_DRAFT_KEY, JSON.stringify(state));
+        } catch {
+          // ignore
+        }
+      }
+
+      function showToast(msg) {
+        const el = document.getElementById('statusToast');
+        el.textContent = msg;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+      }
+
+      // DOM 참조
+      const els = {
+        docTitle: document.getElementById('docTitle'),
+        recipientLabel: document.getElementById('recipientLabel'),
+        docNoLabel: document.getElementById('docNoLabel'),
+        docDateLabel: document.getElementById('docDateLabel'),
+        validUntilRow: document.getElementById('validUntilRow'),
+        recipientCompany: document.getElementById('recipientCompany'),
+        recipientPerson: document.getElementById('recipientPerson'),
+        quoteNo: document.getElementById('quoteNo'),
+        quoteDate: document.getElementById('quoteDate'),
+        validUntil: document.getElementById('validUntil'),
+        supName: document.getElementById('supName'),
+        supRep: document.getElementById('supRep'),
+        supBizNo: document.getElementById('supBizNo'),
+        supAddress: document.getElementById('supAddress'),
+        supPhone: document.getElementById('supPhone'),
+        itemsBody: document.getElementById('itemsBody'),
+        koreanTotalDisplay: document.getElementById('koreanTotalDisplay'),
+        supplyTotalDisplay: document.getElementById('supplyTotalDisplay'),
+        vatTotalDisplay: document.getElementById('vatTotalDisplay'),
+        grandTotalDisplay: document.getElementById('grandTotalDisplay'),
+        btnAddRow: document.getElementById('btnAddRow'),
+        btnToggleMode: document.getElementById('btnToggleMode'),
+        btnSave: document.getElementById('btnSave'),
+        btnNew: document.getElementById('btnNew'),
+        btnPrint: document.getElementById('btnPrint'),
+        savedList: document.getElementById('savedList'),
+        savedCount: document.getElementById('savedCount')
+      };
+
+      function renderMode() {
+        const isStatement = state.mode === 'statement';
+        els.docTitle.textContent = isStatement ? '거 래 명 세 서' : '견 적 서';
+        els.recipientLabel.textContent = isStatement ? '공급받는자' : '받는 곳';
+        els.docNoLabel.textContent = isStatement ? '문서번호' : '견적번호';
+        els.docDateLabel.textContent = isStatement ? '거래일자' : '견적일';
+        els.validUntilRow.classList.toggle('hidden', isStatement);
+        els.btnToggleMode.textContent = isStatement ? '견적서로 보기' : '거래명세서로 보기';
+        els.btnToggleMode.classList.toggle('active', isStatement);
+      }
+
+      function renderHeaderFields() {
+        els.recipientCompany.value = state.recipientCompany || '';
+        els.recipientPerson.value = state.recipientPerson || '';
+        els.quoteNo.value = state.quoteNo || '';
+        els.quoteDate.value = state.quoteDate || '';
+        els.validUntil.value = state.validUntil || '';
+        const sup = state.supplier || {};
+        els.supName.value = sup.name || '';
+        els.supRep.value = sup.rep || '';
+        els.supBizNo.value = sup.bizNo || '';
+        els.supAddress.value = sup.address || '';
+        els.supPhone.value = sup.phone || '';
+      }
+
+      function updateTotalsUI() {
+        const { supply, vat, total } = computeTotals(state.items);
+        els.supplyTotalDisplay.textContent = formatComma(supply);
+        els.vatTotalDisplay.textContent = formatComma(vat);
+        els.grandTotalDisplay.textContent = formatComma(total);
+        els.koreanTotalDisplay.textContent = `${numberToKoreanMoney(total)} (₩${formatComma(total)})`;
+      }
+
+      function formatRowNumericDisplay(val) {
+        if (val === '' || val === null || val === undefined) return '';
+        return formatComma(val);
+      }
+
+      function renderItems() {
+        els.itemsBody.innerHTML = '';
+        state.items.forEach((item, idx) => {
+          const tr = document.createElement('tr');
+          tr.dataset.index = String(idx);
+
+          // 번호
+          const tdNo = document.createElement('td');
+          tdNo.className = 'col-no';
+          tdNo.textContent = String(idx + 1);
+          tr.appendChild(tdNo);
+
+          // 품목명
+          const tdName = document.createElement('td');
+          tdName.className = 'col-name';
+          const inpName = document.createElement('input');
+          inpName.type = 'text';
+          inpName.className = 'doc-input';
+          inpName.value = item.name || '';
+          inpName.placeholder = '품목명';
+          inpName.dataset.field = 'name';
+          tdName.appendChild(inpName);
+          tr.appendChild(tdName);
+
+          // 규격
+          const tdSpec = document.createElement('td');
+          tdSpec.className = 'col-spec';
+          const inpSpec = document.createElement('input');
+          inpSpec.type = 'text';
+          inpSpec.className = 'doc-input center';
+          inpSpec.value = item.spec || '';
+          inpSpec.placeholder = '규격';
+          inpSpec.dataset.field = 'spec';
+          tdSpec.appendChild(inpSpec);
+          tr.appendChild(tdSpec);
+
+          // 수량
+          const tdQty = document.createElement('td');
+          tdQty.className = 'col-qty';
+          const inpQty = document.createElement('input');
+          inpQty.type = 'text';
+          inpQty.inputMode = 'numeric';
+          inpQty.className = 'doc-input num';
+          inpQty.value = formatRowNumericDisplay(item.qty);
+          inpQty.placeholder = '0';
+          inpQty.dataset.field = 'qty';
+          tdQty.appendChild(inpQty);
+          tr.appendChild(tdQty);
+
+          // 단가
+          const tdPrice = document.createElement('td');
+          tdPrice.className = 'col-price';
+          const inpPrice = document.createElement('input');
+          inpPrice.type = 'text';
+          inpPrice.inputMode = 'numeric';
+          inpPrice.className = 'doc-input num';
+          inpPrice.value = formatRowNumericDisplay(item.price);
+          inpPrice.placeholder = '0';
+          inpPrice.dataset.field = 'price';
+          tdPrice.appendChild(inpPrice);
+          tr.appendChild(tdPrice);
+
+          // 금액 (읽기 전용 자동 계산)
+          const tdAmount = document.createElement('td');
+          tdAmount.className = 'col-amount';
+          const rowAmount = Math.floor(parseNonNegNumber(item.qty) * parseNonNegNumber(item.price));
+          tdAmount.textContent = formatComma(rowAmount);
+          tr.appendChild(tdAmount);
+
+          // 비고
+          const tdNote = document.createElement('td');
+          tdNote.className = 'col-note';
+          const inpNote = document.createElement('input');
+          inpNote.type = 'text';
+          inpNote.className = 'doc-input';
+          inpNote.value = item.note || '';
+          inpNote.dataset.field = 'note';
+          tdNote.appendChild(inpNote);
+          tr.appendChild(tdNote);
+
+          // 삭제 버튼
+          const tdDel = document.createElement('td');
+          tdDel.className = 'col-del no-print';
+          const btnDel = document.createElement('button');
+          btnDel.type = 'button';
+          btnDel.className = 'btn-del-row';
+          btnDel.title = '이 줄 삭제';
+          btnDel.setAttribute('aria-label', `${idx + 1}번 품목 삭제`);
+          btnDel.textContent = '✕';
+          btnDel.addEventListener('click', () => {
+            state.items.splice(idx, 1);
+            persistDraft();
+            renderItems();
+            updateTotalsUI();
+          });
+          tdDel.appendChild(btnDel);
+          tr.appendChild(tdDel);
+
+          // 입력 이벤트 바인딩
+          [inpName, inpSpec, inpQty, inpPrice, inpNote].forEach((input) => {
+            const field = input.dataset.field;
+            input.addEventListener('input', () => {
+              if (field === 'qty' || field === 'price') {
+                const numericVal = parseNonNegNumber(input.value);
+                state.items[idx][field] = input.value.trim() === '' ? '' : numericVal;
+                const amt = Math.floor(parseNonNegNumber(state.items[idx].qty) * parseNonNegNumber(state.items[idx].price));
+                tdAmount.textContent = formatComma(amt);
+                updateTotalsUI();
+              } else {
+                state.items[idx][field] = input.value;
+              }
+              persistDraft();
+            });
+
+            if (field === 'qty' || field === 'price') {
+              input.addEventListener('focus', () => {
+                const val = state.items[idx][field];
+                input.value = val === '' || val === null || val === undefined ? '' : String(parseNonNegNumber(val));
+              });
+              input.addEventListener('blur', () => {
+                const val = state.items[idx][field];
+                if (val === '' || val === null || val === undefined) {
+                  input.value = '';
+                } else {
+                  const n = parseNonNegNumber(val);
+                  state.items[idx][field] = n;
+                  input.value = formatComma(n);
+                }
+                const amt = Math.floor(parseNonNegNumber(state.items[idx].qty) * parseNonNegNumber(state.items[idx].price));
+                tdAmount.textContent = formatComma(amt);
+                updateTotalsUI();
+                persistDraft();
+              });
+            }
+          });
+
+          els.itemsBody.appendChild(tr);
+        });
+      }
+
+      // 엑셀/구글 시트 붙여넣기 처리 (품목 표 어느 칸에서든 Ctrl+V)
+      els.itemsBody.addEventListener('paste', (e) => {
+        const text = (e.clipboardData || window.clipboardData)?.getData('text/plain');
+        if (!text) return;
+
+        // 줄 분리 및 빈 줄 건너뛰기
+        const rawLines = text.split(/\r?\n/);
+        const nonEmptyLines = rawLines.filter((line) => line.trim() !== '');
+        const hasTabs = nonEmptyLines.some((line) => line.includes('\t'));
+
+        // 칸이 하나뿐인 글자(탭 없음 & 비어있지 않은 줄 1개)는 기본 붙여넣기 유지
+        if (!hasTabs && nonEmptyLines.length <= 1) {
+          return;
+        }
+
+        e.preventDefault();
+        const addedItems = [];
+        for (const line of nonEmptyLines) {
+          const cols = line.split('\t');
+          const name = (cols[0] ?? '').trim();
+          const spec = (cols[1] ?? '').trim();
+          const qty = parseNonNegNumber(cols[2] ?? 0);
+          const price = parseNonNegNumber(cols[3] ?? 0);
+          const note = (cols[4] ?? '').trim();
+          addedItems.push({ name, spec, qty, price, note });
+        }
+
+        if (addedItems.length > 0) {
+          state.items.push(...addedItems);
+          persistDraft();
+          renderItems();
+          updateTotalsUI();
+          showToast(`${addedItems.length}개 품목 붙여넣기 완료`);
+        }
+      });
+
+      function renderSavedList() {
+        els.savedCount.textContent = `${savedQuotes.length}건`;
+        els.savedList.innerHTML = '';
+
+        if (savedQuotes.length === 0) {
+          const li = document.createElement('li');
+          li.className = 'saved-empty';
+          li.textContent = '아직 저장한 견적이 없습니다.';
+          els.savedList.appendChild(li);
+          return;
+        }
+
+        savedQuotes.forEach((q) => {
+          const li = document.createElement('li');
+          li.className = 'saved-item' + (q.quoteNo === state.quoteNo ? ' current' : '');
+
+          const { total } = computeTotals(q.items || []);
+          const recipientText = [q.recipientCompany, q.recipientPerson].filter(Boolean).join(' ') || '(받는 곳 없음)';
+
+          const top = document.createElement('div');
+          top.className = 'saved-item-top';
+
+          const spanNo = document.createElement('span');
+          spanNo.className = 'saved-no';
+          spanNo.textContent = q.quoteNo || '(번호 없음)';
+
+          const spanDate = document.createElement('span');
+          spanDate.className = 'saved-date';
+          spanDate.textContent = q.quoteDate || '';
+
+          top.appendChild(spanNo);
+          top.appendChild(spanDate);
+
+          const bottom = document.createElement('div');
+          bottom.className = 'saved-item-bottom';
+
+          const spanRecip = document.createElement('span');
+          spanRecip.className = 'saved-recipient';
+          spanRecip.textContent = recipientText;
+
+          const spanTotal = document.createElement('span');
+          spanTotal.className = 'saved-total';
+          spanTotal.textContent = `${formatComma(total)}원`;
+
+          bottom.appendChild(spanRecip);
+          bottom.appendChild(spanTotal);
+
+          li.appendChild(top);
+          li.appendChild(bottom);
+
+          li.addEventListener('click', () => {
+            state = JSON.parse(JSON.stringify(q));
+            if (!state.mode) state.mode = 'quote';
+            persistDraft();
+            renderAll();
+            showToast(`${state.quoteNo} 열기 완료`);
+          });
+
+          els.savedList.appendChild(li);
+        });
+      }
+
+      function saveCurrentToList() {
+        const snapshot = JSON.parse(JSON.stringify(state));
+        const idx = savedQuotes.findIndex((q) => q.quoteNo === snapshot.quoteNo);
+        if (idx >= 0) {
+          savedQuotes[idx] = snapshot;
+        } else {
+          savedQuotes.unshift(snapshot);
+        }
+        persistSavedList(savedQuotes);
+        renderSavedList();
+      }
+
+      function renderAll() {
+        renderMode();
+        renderHeaderFields();
+        renderItems();
+        updateTotalsUI();
+        renderSavedList();
+      }
+
+      // 헤더 및 공급자 입력 바인딩
+      function bindHeaderInputs() {
+        const directMap = [
+          [els.recipientCompany, 'recipientCompany'],
+          [els.recipientPerson, 'recipientPerson'],
+          [els.quoteNo, 'quoteNo'],
+          [els.quoteDate, 'quoteDate'],
+          [els.validUntil, 'validUntil']
+        ];
+        for (const [el, key] of directMap) {
+          el.addEventListener('input', () => {
+            state[key] = el.value;
+            persistDraft();
+          });
+        }
+
+        const supMap = [
+          [els.supName, 'name'],
+          [els.supRep, 'rep'],
+          [els.supBizNo, 'bizNo'],
+          [els.supAddress, 'address'],
+          [els.supPhone, 'phone']
+        ];
+        for (const [el, key] of supMap) {
+          el.addEventListener('input', () => {
+            if (!state.supplier) state.supplier = {};
+            state.supplier[key] = el.value;
+            persistDraft();
+          });
+        }
+      }
+
+      // 툴바 버튼
+      els.btnAddRow.addEventListener('click', () => {
+        state.items.push(createBlankItem());
+        persistDraft();
+        renderItems();
+        updateTotalsUI();
+        const lastRowInput = els.itemsBody.querySelector('tr:last-child input[data-field="name"]');
+        if (lastRowInput) lastRowInput.focus();
+      });
+
+      els.btnToggleMode.addEventListener('click', () => {
+        state.mode = state.mode === 'statement' ? 'quote' : 'statement';
+        persistDraft();
+        renderMode();
+      });
+
+      els.btnSave.addEventListener('click', () => {
+        saveCurrentToList();
+        showToast(`${state.quoteNo} 저장됨`);
+      });
+
+      els.btnNew.addEventListener('click', () => {
+        saveCurrentToList();
+        const todayISO = formatDateISO(new Date());
+        const nextNo = generateNextQuoteNo(savedQuotes, state.quoteNo);
+        const preservedSupplier = state.supplier ? JSON.parse(JSON.stringify(state.supplier)) : {
+          name: '', rep: '', bizNo: '', address: '', phone: ''
+        };
+
+        state = {
+          mode: state.mode || 'quote',
+          recipientCompany: '',
+          recipientPerson: '',
+          quoteNo: nextNo,
+          quoteDate: todayISO,
+          validUntil: addDaysISO(todayISO, 30),
+          supplier: preservedSupplier,
+          items: [createBlankItem()]
+        };
+
+        persistDraft();
+        renderAll();
+        showToast(`새 견적서 (${nextNo})`);
+      });
+
+      els.btnPrint.addEventListener('click', () => {
+        window.print();
+      });
+
+      bindHeaderInputs();
+      renderAll();
+    })();
+  </script>
+</body>
+</html>

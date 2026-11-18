@@ -1,0 +1,2148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>견적서 · 거래명세서</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css"
+  />
+  <style>
+    :root {
+      --desk-bg: #0c1726;
+      --desk-glow: #172b47;
+      --paper-bg: #fcfaf4;
+      --paper-border: #e6dfd1;
+      --ink: #181c22;
+      --ink-secondary: #49515c;
+      --ink-muted: #7b838f;
+      --rule: #d8d1c4;
+      --rule-strong: #232830;
+      --green: #14452f;
+      --green-hover: #1b5a3e;
+      --green-tint: rgba(20, 69, 47, 0.08);
+      --stamp: #b82924;
+      --gold-flash: rgba(218, 173, 62, 0.34);
+      --font: "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      --paper-w: 794px;
+      --paper-min-h: 1123px;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      font-family: var(--font);
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse 90% 60% at 45% 18%, var(--desk-glow) 0%, var(--desk-bg) 62%, #070e18 100%);
+      background-attachment: fixed;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Reset all default browser form/button styles */
+    button, input, textarea {
+      font-family: inherit;
+      color: inherit;
+      margin: 0;
+      padding: 0;
+      border: none;
+      background: none;
+      outline: none;
+      appearance: none;
+      -webkit-appearance: none;
+      box-shadow: none;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type="number"] {
+      -moz-appearance: textfield;
+    }
+
+    .num {
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: "tnum" 1;
+    }
+
+    /* Workbench Layout */
+    .workbench {
+      min-height: 100vh;
+      padding: 26px 24px 64px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 22px;
+    }
+
+    /* Floating Toolbar */
+    .toolbar {
+      position: sticky;
+      top: 16px;
+      z-index: 40;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(12, 22, 38, 0.78);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow:
+        0 8px 28px rgba(3, 8, 18, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .tool-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 15px;
+      border-radius: 999px;
+      font-size: 13.5px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      color: rgba(244, 246, 250, 0.9);
+      background: transparent;
+      transition: background-color 0.18s ease, color 0.18s ease, transform 0.14s ease;
+      white-space: nowrap;
+    }
+
+    .tool-btn svg {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      stroke-width: 1.9;
+    }
+
+    .tool-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+    }
+
+    .tool-btn:active {
+      transform: scale(0.97);
+    }
+
+    .tool-btn--accent {
+      background: var(--green);
+      color: #ffffff;
+      font-weight: 600;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    }
+
+    .tool-btn--accent:hover {
+      background: var(--green-hover);
+    }
+
+    .toolbar-sep {
+      width: 1px;
+      height: 18px;
+      background: rgba(255, 255, 255, 0.12);
+      margin: 0 2px;
+    }
+
+    /* Main Workspace Grid: Paper + Saved Cards */
+    .workspace-body {
+      width: 100%;
+      max-width: 1136px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      gap: 32px;
+    }
+
+    /* Paper Scale Wrapper (handles mobile scaling cleanly) */
+    .paper-scale-box {
+      width: var(--paper-w);
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .paper-stage {
+      width: var(--paper-w);
+      perspective: 2400px;
+      transform-origin: top left;
+    }
+
+    .paper-card {
+      position: relative;
+      width: 100%;
+      transform-style: preserve-3d;
+      transition: transform 0.72s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .paper-card.is-flipped {
+      transform: rotateY(180deg);
+    }
+
+    .paper-face {
+      width: 100%;
+      min-height: var(--paper-min-h);
+      background: var(--paper-bg);
+      border-radius: 2px;
+      padding: 50px 52px 46px;
+      position: relative;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      box-shadow:
+        0 1px 3px rgba(5, 10, 20, 0.22),
+        0 14px 36px rgba(5, 10, 20, 0.38),
+        0 34px 72px rgba(5, 10, 20, 0.32),
+        inset 0 0 0 1px rgba(214, 206, 190, 0.55);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .paper-face--back {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform: rotateY(180deg);
+    }
+
+    /* Subtle paper grain overlay */
+    .paper-face::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      border-radius: 2px;
+      opacity: 0.036;
+      mix-blend-mode: multiply;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+    }
+
+    /* Document Header */
+    .doc-title-wrap {
+      text-align: center;
+      padding-bottom: 14px;
+      border-bottom: 3px double var(--rule-strong);
+      margin-bottom: 26px;
+    }
+
+    .doc-title {
+      margin: 0;
+      font-size: 31px;
+      font-weight: 800;
+      letter-spacing: 0.48em;
+      padding-left: 0.48em;
+      color: var(--ink);
+      line-height: 1.25;
+    }
+
+    /* Info Grid: Left Recipient + Meta, Right Supplier */
+    .doc-info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.08fr;
+      gap: 28px;
+      align-items: start;
+      margin-bottom: 24px;
+    }
+
+    /* Recipient Side */
+    .recipient-block {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 158px;
+      padding-top: 2px;
+    }
+
+    .recipient-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--green);
+      margin-bottom: 8px;
+    }
+
+    .recipient-company-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .doc-input {
+      width: 100%;
+      background: transparent;
+      border-bottom: 1.5px solid transparent;
+      padding: 2px 1px;
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--ink);
+      transition: border-color 0.16s ease, background-color 0.16s ease;
+    }
+
+    .doc-input::placeholder {
+      color: #b7b0a2;
+      font-weight: 400;
+    }
+
+    .doc-input:hover {
+      border-bottom-color: rgba(20, 69, 47, 0.22);
+    }
+
+    .doc-input:focus {
+      border-bottom-color: var(--green);
+      background: rgba(20, 69, 47, 0.03);
+    }
+
+    .recipient-company-input {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      padding: 2px 2px 3px;
+    }
+
+    .recipient-contact-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 18px;
+    }
+
+    .recipient-contact-input {
+      width: auto;
+      field-sizing: content;
+      min-width: 44px;
+      max-width: 180px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .honorific {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--ink-secondary);
+      flex-shrink: 0;
+    }
+
+    .meta-list {
+      display: grid;
+      grid-template-columns: 74px 1fr;
+      row-gap: 5px;
+      column-gap: 10px;
+      padding-top: 12px;
+      border-top: 1px solid var(--rule);
+      font-size: 12.5px;
+    }
+
+    .meta-key {
+      color: var(--ink-muted);
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+    }
+
+    .meta-val-input {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink);
+      padding: 1px 2px;
+    }
+
+    /* Supplier Table */
+    .supplier-wrap {
+      position: relative;
+    }
+
+    .supplier-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1.5px solid var(--rule-strong);
+      font-size: 12px;
+    }
+
+    .supplier-table th,
+    .supplier-table td {
+      border: 1px solid var(--rule);
+      padding: 5px 8px;
+      vertical-align: middle;
+      text-align: left;
+    }
+
+    .supplier-table th {
+      background: rgba(235, 229, 217, 0.42);
+      color: var(--ink-secondary);
+      font-weight: 600;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .supplier-side-th {
+      width: 24px;
+      writing-mode: vertical-rl;
+      letter-spacing: 0.35em;
+      padding: 8px 4px !important;
+      font-weight: 700 !important;
+      color: var(--ink) !important;
+      background: rgba(235, 229, 217, 0.58) !important;
+    }
+
+    .supplier-key-th {
+      width: 74px;
+      font-size: 11.5px;
+    }
+
+    .supplier-input {
+      font-size: 12.5px;
+      font-weight: 500;
+      width: 100%;
+      padding: 1px 2px;
+    }
+
+    .supplier-name-cell {
+      position: relative;
+      padding-right: 60px !important;
+    }
+
+    .supplier-name-input {
+      font-weight: 700;
+      font-size: 13.5px;
+    }
+
+    /* Red Circular Stamp SVG */
+    .stamp-holder {
+      position: absolute;
+      right: -12px;
+      top: -14px;
+      width: 74px;
+      height: 74px;
+      pointer-events: none;
+      transform: rotate(-7deg);
+      z-index: 5;
+      mix-blend-mode: multiply;
+    }
+
+    .stamp-holder svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* Total Banner Above Table */
+    .total-banner {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 13px 16px;
+      margin-bottom: 16px;
+      border-top: 1.5px solid var(--rule-strong);
+      border-bottom: 1px solid var(--rule);
+      background: rgba(20, 69, 47, 0.035);
+    }
+
+    .total-banner-label {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--green);
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    .total-banner-amount {
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+      text-align: right;
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }
+
+    .total-banner-amount.is-updating {
+      opacity: 0.55;
+      transform: translateY(-2px);
+    }
+
+    /* Items Table */
+    .items-section {
+      flex: 1 0 auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 12.5px;
+    }
+
+    .items-table thead th {
+      padding: 8px 7px;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--ink);
+      border-top: 1.5px solid var(--rule-strong);
+      border-bottom: 1.5px solid var(--rule-strong);
+      background: rgba(235, 229, 217, 0.38);
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+
+    .items-table tbody tr {
+      position: relative;
+      border-bottom: 1px solid var(--rule);
+      transition: background-color 0.14s ease;
+    }
+
+    .items-table tbody tr:hover {
+      background: rgba(20, 69, 47, 0.025);
+    }
+
+    .items-table tbody td {
+      padding: 6px 6px;
+      vertical-align: middle;
+      position: relative;
+    }
+
+    .col-no { width: 38px; text-align: center; color: var(--ink-muted); font-size: 12px; }
+    .col-name { width: 26%; }
+    .col-spec { width: 17%; }
+    .col-qty { width: 64px; }
+    .col-price { width: 104px; }
+    .col-amount { width: 112px; text-align: right; font-weight: 600; padding-right: 10px !important; }
+    .col-note { width: auto; padding-right: 26px !important; }
+
+    .cell-input {
+      width: 100%;
+      font-size: 12.5px;
+      padding: 3px 3px;
+      background: transparent;
+      border-bottom: 1.5px solid transparent;
+      transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+
+    .cell-input:hover {
+      border-bottom-color: rgba(20, 69, 47, 0.22);
+    }
+
+    .cell-input:focus {
+      border-bottom-color: var(--green);
+      background: rgba(20, 69, 47, 0.035);
+    }
+
+    .cell-input::placeholder {
+      color: transparent;
+      transition: color 0.15s ease;
+    }
+
+    .cell-input:hover::placeholder,
+    .cell-input:focus::placeholder {
+      color: #b7b0a2;
+    }
+
+    .cell-input--right {
+      text-align: right;
+    }
+
+    .cell-amount-text {
+      display: block;
+      padding: 3px 0;
+      border-radius: 3px;
+      color: var(--ink);
+      user-select: text;
+    }
+
+    .row-delete-btn {
+      position: absolute;
+      right: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: var(--ink-muted);
+      opacity: 0;
+      transition: opacity 0.14s ease, background-color 0.14s ease, color 0.14s ease;
+    }
+
+    .items-table tbody tr:hover .row-delete-btn,
+    .row-delete-btn:focus-visible {
+      opacity: 1;
+    }
+
+    .row-delete-btn:hover {
+      background: rgba(184, 41, 36, 0.12);
+      color: var(--stamp);
+    }
+
+    /* Paste Row Slide-In & Gold Shimmer */
+    @keyframes rowSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(14px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes goldFlash {
+      0% {
+        background-color: var(--gold-flash);
+      }
+      100% {
+        background-color: transparent;
+      }
+    }
+
+    .row-paste-enter {
+      animation: rowSlideIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    .cell-gold-flash {
+      animation: goldFlash 1.05s ease-out both;
+    }
+
+    /* Empty State */
+    .empty-state {
+      margin-top: 14px;
+      border: 1.5px dashed #cbc3b3;
+      border-radius: 6px;
+      padding: 44px 20px;
+      text-align: center;
+      color: var(--ink-muted);
+      background: rgba(235, 229, 217, 0.18);
+      cursor: text;
+      outline: none;
+      transition: border-color 0.18s ease, background-color 0.18s ease;
+    }
+
+    .empty-state:focus,
+    .empty-state:hover {
+      border-color: var(--green);
+      background: rgba(20, 69, 47, 0.03);
+    }
+
+    .empty-state svg {
+      width: 44px;
+      height: 44px;
+      margin-bottom: 10px;
+      color: #a9a192;
+    }
+
+    .empty-state-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--ink-secondary);
+      margin: 0 0 4px;
+    }
+
+    .empty-state-sub {
+      font-size: 12px;
+      color: var(--ink-muted);
+      margin: 0;
+    }
+
+    /* Summary Block Below Table */
+    .summary-section {
+      margin-top: 20px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .summary-box {
+      width: 290px;
+      border-top: 1px solid var(--rule);
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .summary-row-label {
+      color: var(--ink-secondary);
+      font-weight: 500;
+    }
+
+    .summary-row-val {
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .summary-row--total {
+      background: var(--green);
+      color: #ffffff;
+      border-bottom: none;
+      padding: 11px 14px;
+      font-size: 14.5px;
+      font-weight: 700;
+      border-radius: 0 0 2px 2px;
+    }
+
+    .summary-row--total .summary-row-label,
+    .summary-row--total .summary-row-val {
+      color: #ffffff;
+    }
+
+    /* Document Footer */
+    .doc-footer {
+      margin-top: 26px;
+      padding-top: 14px;
+      border-top: 1px solid var(--rule);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11.5px;
+      color: var(--ink-muted);
+    }
+
+    /* Saved Quotes Sidebar */
+    .saved-panel {
+      width: 280px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding-top: 4px;
+    }
+
+    .saved-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 4px;
+    }
+
+    .saved-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: rgba(235, 240, 248, 0.78);
+    }
+
+    .saved-count {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: rgba(235, 240, 248, 0.65);
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .saved-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .saved-empty {
+      padding: 22px 16px;
+      border-radius: 10px;
+      border: 1px dashed rgba(255, 255, 255, 0.14);
+      color: rgba(235, 240, 248, 0.45);
+      font-size: 12.5px;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .saved-card {
+      position: relative;
+      text-align: left;
+      width: 100%;
+      padding: 14px 15px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.055);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #f1f5f9;
+      transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .saved-card:hover {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-1px);
+    }
+
+    .saved-card.is-active {
+      background: rgba(20, 69, 47, 0.34);
+      border-color: rgba(58, 158, 110, 0.6);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+    }
+
+    @keyframes cardDropIn {
+      from {
+        opacity: 0;
+        transform: translateY(-18px) scale(0.97);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .saved-card.is-entering {
+      animation: cardDropIn 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    .saved-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      padding-right: 18px;
+    }
+
+    .saved-card-no {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #93c5ab;
+      letter-spacing: 0.01em;
+    }
+
+    .saved-card-date {
+      font-size: 11px;
+      color: rgba(226, 232, 240, 0.55);
+    }
+
+    .saved-card-recipient {
+      font-size: 14.5px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .saved-card-total {
+      font-size: 14px;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.9);
+      text-align: right;
+    }
+
+    .saved-card-del {
+      position: absolute;
+      top: 11px;
+      right: 10px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.45);
+      opacity: 0;
+      transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+    }
+
+    .saved-card:hover .saved-card-del {
+      opacity: 1;
+    }
+
+    .saved-card-del:hover {
+      background: rgba(184, 41, 36, 0.35);
+      color: #ffffff;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(16px);
+      z-index: 100;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 999px;
+      background: rgba(12, 22, 38, 0.92);
+      border: 1px solid rgba(58, 158, 110, 0.5);
+      color: #ffffff;
+      font-size: 13.5px;
+      font-weight: 600;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.24s ease, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .toast.is-visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .toast-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #3ab97c;
+    }
+
+    /* Responsive Narrow Screens */
+    @media (max-width: 1150px) {
+      .workspace-body {
+        flex-direction: column;
+        align-items: center;
+        gap: 28px;
+      }
+
+      .saved-panel {
+        width: 100%;
+        max-width: var(--paper-w);
+      }
+
+      .saved-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .workbench {
+        padding: 12px 12px 48px;
+        gap: 14px;
+      }
+
+      .toolbar {
+        top: 8px;
+        border-radius: 16px;
+        padding: 6px 8px;
+        gap: 4px;
+      }
+
+      .tool-btn {
+        padding: 7px 10px;
+        font-size: 12px;
+        gap: 5px;
+      }
+
+      .toolbar-sep {
+        display: none;
+      }
+
+      .saved-list {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Reduced Motion */
+    @media (prefers-reduced-motion: reduce) {
+      .paper-card,
+      .tool-btn,
+      .saved-card,
+      .toast,
+      .total-banner-amount,
+      .doc-input,
+      .cell-input {
+        transition: none !important;
+      }
+
+      .row-paste-enter,
+      .cell-gold-flash,
+      .saved-card.is-entering {
+        animation: none !important;
+      }
+    }
+
+    /* Print Styles (Single A4 Portrait Page) */
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 10mm 12mm;
+      }
+
+      html, body {
+        background: #ffffff !important;
+        min-height: 0 !important;
+        height: auto !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      .workbench {
+        padding: 0 !important;
+        margin: 0 !important;
+        display: block !important;
+        min-height: 0 !important;
+      }
+
+      .toolbar,
+      .saved-panel,
+      .toast,
+      .row-delete-btn,
+      .empty-state {
+        display: none !important;
+      }
+
+      .workspace-body {
+        display: block !important;
+        max-width: none !important;
+      }
+
+      .paper-scale-box {
+        width: 100% !important;
+        height: auto !important;
+      }
+
+      .paper-stage {
+        width: 100% !important;
+        transform: none !important;
+        perspective: none !important;
+      }
+
+      .paper-card,
+      .paper-card.is-flipped {
+        transform: none !important;
+        transition: none !important;
+        transform-style: flat !important;
+      }
+
+      .paper-face {
+        position: static !important;
+        transform: none !important;
+        box-shadow: none !important;
+        background: #ffffff !important;
+        min-height: 0 !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+        backface-visibility: visible !important;
+      }
+
+      .paper-face::after {
+        display: none !important;
+      }
+
+      /* Print ONLY the currently active face */
+      .paper-card:not(.is-flipped) .paper-face--back {
+        display: none !important;
+      }
+      .paper-card.is-flipped .paper-face--front {
+        display: none !important;
+      }
+
+      .doc-title-wrap {
+        padding-bottom: 10px !important;
+        margin-bottom: 16px !important;
+      }
+
+      .doc-info-grid {
+        margin-bottom: 14px !important;
+      }
+
+      .recipient-block {
+        min-height: 136px !important;
+      }
+
+      .total-banner {
+        padding: 9px 14px !important;
+        margin-bottom: 12px !important;
+      }
+
+      .items-table thead th {
+        padding: 6px 5px !important;
+      }
+
+      .items-table tbody td {
+        padding: 4px 5px !important;
+      }
+
+      .summary-section {
+        margin-top: 12px !important;
+      }
+
+      .doc-footer {
+        margin-top: 14px !important;
+        padding-top: 10px !important;
+      }
+
+      .doc-input::placeholder,
+      .cell-input::placeholder {
+        color: transparent !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="workbench">
+    <!-- Floating Toolbar -->
+    <nav class="toolbar" aria-label="문서 도구">
+      <button type="button" class="tool-btn" id="btnAddRow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        <span>품목 추가</span>
+      </button>
+
+      <button type="button" class="tool-btn" id="btnFlip">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 2l4 4-4 4" />
+          <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+          <path d="M7 22l-4-4 4-4" />
+          <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+        </svg>
+        <span id="btnFlipLabel">거래명세서로 보기</span>
+      </button>
+
+      <div class="toolbar-sep" aria-hidden="true"></div>
+
+      <button type="button" class="tool-btn" id="btnSave">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+          <polyline points="17 21 17 13 7 13 7 21" />
+          <polyline points="7 3 7 8 15 8" />
+        </svg>
+        <span>저장</span>
+      </button>
+
+      <button type="button" class="tool-btn" id="btnNew">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="12" y1="18" x2="12" y2="12" />
+          <line x1="9" y1="15" x2="15" y2="15" />
+        </svg>
+        <span>새 견적서</span>
+      </button>
+
+      <div class="toolbar-sep" aria-hidden="true"></div>
+
+      <button type="button" class="tool-btn tool-btn--accent" id="btnPrint">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 6 2 18 2 18 9" />
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+          <rect x="6" y="14" width="12" height="8" />
+        </svg>
+        <span>인쇄</span>
+      </button>
+    </nav>
+
+    <!-- Main Workspace -->
+    <div class="workspace-body">
+      <div class="paper-scale-box" id="paperScaleBox">
+        <div class="paper-stage" id="paperStage">
+          <div class="paper-card" id="paperCard">
+            <section class="paper-face paper-face--front" id="faceFront" aria-label="견적서"></section>
+            <section class="paper-face paper-face--back" id="faceBack" aria-label="거래명세서" aria-hidden="true"></section>
+          </div>
+        </div>
+      </div>
+
+      <!-- Saved Quotes Sidebar -->
+      <aside class="saved-panel" aria-label="저장한 견적 목록">
+        <div class="saved-header">
+          <h2 class="saved-title">저장한 견적</h2>
+          <span class="saved-count num" id="savedCount">0</span>
+        </div>
+        <div class="saved-list" id="savedList"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <span class="toast-dot" aria-hidden="true"></span>
+    <span id="toastText">저장했어요</span>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      const STORAGE_KEY_CURRENT = "stationery_quote_current_v1";
+      const STORAGE_KEY_SAVED = "stationery_quote_saved_v1";
+      const STORAGE_KEY_SEQ = "stationery_quote_seq_v1";
+
+      const prefersReducedMotion = () =>
+        window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      /* ---------- Date & Formatting Helpers ---------- */
+      function formatDate(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+      }
+
+      function addDays(dateStr, days) {
+        const parts = String(dateStr || "").split("-").map(Number);
+        const d =
+          parts.length === 3 && parts[0] && parts[1] && parts[2]
+            ? new Date(parts[0], parts[1] - 1, parts[2])
+            : new Date();
+        d.setDate(d.getDate() + days);
+        return formatDate(d);
+      }
+
+      function todayCompact(dateStr) {
+        return (dateStr || formatDate(new Date())).replace(/-/g, "");
+      }
+
+      function formatNumber(n) {
+        const val = Math.max(0, Math.floor(Number(n) || 0));
+        return val.toLocaleString("ko-KR");
+      }
+
+      function parseNumericInput(raw) {
+        if (typeof raw === "number") {
+          return Number.isFinite(raw) ? Math.max(0, raw) : 0;
+        }
+        const cleaned = String(raw ?? "")
+          .replace(/[,원₩\s]/g, "")
+          .trim();
+        if (!cleaned) return 0;
+        if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return 0;
+        const num = Number(cleaned);
+        if (!Number.isFinite(num) || num < 0) return 0;
+        return num;
+      }
+
+      function parseIntPrice(raw) {
+        return Math.floor(parseNumericInput(raw));
+      }
+
+      function numberToKoreanCurrency(num) {
+        const n = Math.max(0, Math.floor(Number(num) || 0));
+        if (n === 0) return "일금 영원정";
+
+        const digits = ["", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"];
+        const smallUnits = ["", "십", "백", "천"];
+        const bigUnits = ["", "만", "억", "조", "경"];
+
+        const str = String(n);
+        const groups = [];
+        for (let i = str.length; i > 0; i -= 4) {
+          groups.push(str.slice(Math.max(0, i - 4), i));
+        }
+
+        const parts = [];
+        for (let gIdx = groups.length - 1; gIdx >= 0; gIdx--) {
+          const chunk = groups[gIdx];
+          let chunkText = "";
+          const len = chunk.length;
+          for (let i = 0; i < len; i++) {
+            const d = Number(chunk[i]);
+            if (d === 0) continue;
+            const unitPos = len - 1 - i;
+            chunkText += digits[d] + smallUnits[unitPos];
+          }
+          if (chunkText) {
+            parts.push(chunkText + bigUnits[gIdx]);
+          }
+        }
+
+        return `일금 ${parts.join("")}원정`;
+      }
+
+      function escapeHtml(str) {
+        return String(str ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      /* ---------- Sequence Generator ---------- */
+      function getNextQuoteNo(dateStr, savedList, currentNo) {
+        const compact = todayCompact(dateStr);
+        const prefix = `Q-${compact}-`;
+        let maxSeq = 0;
+
+        const consider = (no) => {
+          if (typeof no === "string" && no.startsWith(prefix)) {
+            const tail = parseInt(no.slice(prefix.length), 10);
+            if (Number.isFinite(tail) && tail > maxSeq) maxSeq = tail;
+          }
+        };
+
+        (savedList || []).forEach((q) => consider(q.quoteNo));
+        consider(currentNo);
+
+        try {
+          const stored = JSON.parse(localStorage.getItem(STORAGE_KEY_SEQ) || "{}");
+          if (stored.date === compact && Number.isFinite(stored.seq) && stored.seq > maxSeq) {
+            maxSeq = stored.seq;
+          }
+        } catch (_) {}
+
+        const nextSeq = maxSeq + 1;
+        try {
+          localStorage.setItem(STORAGE_KEY_SEQ, JSON.stringify({ date: compact, seq: nextSeq }));
+        } catch (_) {}
+
+        return `${prefix}${String(nextSeq).padStart(2, "0")}`;
+      }
+
+      /* ---------- Initial / Default State ---------- */
+      function createInitialQuote() {
+        const today = formatDate(new Date());
+        return {
+          quoteNo: `Q-${todayCompact(today)}-01`,
+          quoteDate: today,
+          validUntil: addDays(today, 30),
+          recipientCompany: "샘플상사",
+          recipientContact: "김민수",
+          supplier: {
+            name: "예시오피스",
+            ceo: "",
+            bizNo: "",
+            address: "",
+            phone: ""
+          },
+          items: [
+            { name: "노트북 거치대", spec: "알루미늄", qty: 3, price: 45000, note: "" },
+            { name: "무선 키보드", spec: "한글 각인", qty: 5, price: 32900, note: "" },
+            { name: "설치 출장비", spec: "서울", qty: 1, price: 150000, note: "" }
+          ]
+        };
+      }
+
+      function loadState() {
+        let saved = [];
+        try {
+          const rawSaved = localStorage.getItem(STORAGE_KEY_SAVED);
+          if (rawSaved) saved = JSON.parse(rawSaved) || [];
+        } catch (_) {
+          saved = [];
+        }
+
+        let current = null;
+        try {
+          const rawCurr = localStorage.getItem(STORAGE_KEY_CURRENT);
+          if (rawCurr) current = JSON.parse(rawCurr);
+        } catch (_) {
+          current = null;
+        }
+
+        if (!current || !current.quoteNo) {
+          current = createInitialQuote();
+        }
+
+        return { current, saved };
+      }
+
+      const appState = {
+        ...loadState(),
+        isFlipped: false,
+        displayedTotals: { supply: 0, vat: 0, total: 0 },
+        rollRaf: null,
+        lastSavedNo: null
+      };
+
+      function persistCurrent() {
+        try {
+          localStorage.setItem(STORAGE_KEY_CURRENT, JSON.stringify(appState.current));
+        } catch (_) {}
+      }
+
+      function persistSaved() {
+        try {
+          localStorage.setItem(STORAGE_KEY_SAVED, JSON.stringify(appState.saved));
+        } catch (_) {}
+      }
+
+      /* ---------- Calculations ---------- */
+      function computeTotals(items) {
+        let supply = 0;
+        for (const item of items) {
+          const q = parseNumericInput(item.qty);
+          const p = parseIntPrice(item.price);
+          supply += Math.round(q * p);
+        }
+        const vat = Math.floor(supply * 0.1);
+        const total = supply + vat;
+        return { supply, vat, total };
+      }
+
+      /* ---------- Red SVG Stamp Generator ---------- */
+      function buildStampSvg(companyName, filterId) {
+        const raw = String(companyName || "").replace(/\s+/g, "");
+        const chars = Array.from(raw);
+        let textNodes = "";
+
+        if (chars.length === 0) {
+          textNodes = `<text x="44" y="47" font-size="24" text-anchor="middle" dominant-baseline="middle">인</text>`;
+        } else if (chars.length === 1) {
+          textNodes = `<text x="44" y="46" font-size="28" text-anchor="middle" dominant-baseline="middle">${escapeHtml(chars[0])}</text>`;
+        } else if (chars.length === 2) {
+          textNodes = `
+            <text x="31" y="46" font-size="22" text-anchor="middle" dominant-baseline="middle">${escapeHtml(chars[0])}</text>
+            <text x="57" y="46" font-size="22" text-anchor="middle" dominant-baseline="middle">${escapeHtml(chars[1])}</text>
+          `;
+        } else if (chars.length === 3) {
+          const grid = [chars[0], chars[1], chars[2], "인"];
+          textNodes = renderGridStamp(grid, 2, 2, 18);
+        } else if (chars.length === 4) {
+          textNodes = renderGridStamp(chars, 2, 2, 18);
+        } else if (chars.length === 5) {
+          textNodes = `
+            <text x="33" y="34" font-size="16" text-anchor="middle" dominant-baseline="middle">${escapeHtml(chars[0])}</text>
+            <text x="55" y="34" font-size="16" text-anchor="middle" dominant-baseline="middle">${escapeHtml(chars[1])}</text>
+            <text x="26" y="56" font-size="15" text-anchor="middle" dominant-baseline="middle">${escapeHtml(chars[2])}</text>
+            <text x="44" y="56" font-size="15" text-anchor="middle" dominant-baseline="middle">${escapeHtml(chars[3])}</text>
+            <text x="62" y="56" font-size="15" text-anchor="middle" dominant-baseline="middle">${escapeHtml(chars[4])}</text>
+          `;
+        } else if (chars.length === 6) {
+          textNodes = renderGridStamp(chars, 3, 2, 14.5);
+        } else {
+          const clipped = chars.slice(0, 9);
+          textNodes = renderGridStamp(clipped, 3, 3, 12.5);
+        }
+
+        return `
+          <svg viewBox="0 0 88 88" aria-hidden="true">
+            <defs>
+              <filter id="${filterId}" x="-12%" y="-12%" width="124%" height="124%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.14" numOctaves="2" seed="7" result="noise" />
+                <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.65" xChannelSelector="R" yChannelSelector="G" />
+              </filter>
+            </defs>
+            <g filter="url(#${filterId})" opacity="0.88">
+              <circle cx="44" cy="44" r="38" fill="none" stroke="#b82924" stroke-width="2.7" />
+              <circle cx="44" cy="44" r="33.2" fill="none" stroke="#b82924" stroke-width="0.9" />
+              <g fill="#b82924" font-family="Pretendard, sans-serif" font-weight="800">
+                ${textNodes}
+              </g>
+            </g>
+          </svg>
+        `;
+      }
+
+      function renderGridStamp(chars, cols, rows, fontSize) {
+        const xs = cols === 2 ? [32, 56] : [26, 44, 62];
+        const ys = rows === 2 ? [33, 56] : [26, 45, 64];
+        let out = "";
+        chars.forEach((ch, idx) => {
+          const r = Math.floor(idx / cols);
+          const c = idx % cols;
+          if (r < ys.length && c < xs.length) {
+            out += `<text x="${xs[c]}" y="${ys[r]}" font-size="${fontSize}" text-anchor="middle" dominant-baseline="middle">${escapeHtml(ch)}</text>`;
+          }
+        });
+        return out;
+      }
+
+      /* ---------- Face Rendering (Front: 견적서, Back: 거래명세서) ---------- */
+      function renderFaceHtml(mode) {
+        const isStatement = mode === "statement";
+        const q = appState.current;
+        const totals = computeTotals(q.items);
+        const filterId = isStatement ? "stampRoughBack" : "stampRoughFront";
+
+        const rowsHtml = q.items
+          .map((item, idx) => {
+            const lineAmt = Math.round(parseNumericInput(item.qty) * parseIntPrice(item.price));
+            return `
+              <tr data-row-index="${idx}">
+                <td class="col-no num">${idx + 1}</td>
+                <td class="col-name">
+                  <input type="text" class="cell-input" data-field="name" value="${escapeHtml(item.name)}" placeholder="품목명" />
+                </td>
+                <td class="col-spec">
+                  <input type="text" class="cell-input" data-field="spec" value="${escapeHtml(item.spec)}" placeholder="규격" />
+                </td>
+                <td class="col-qty">
+                  <input type="text" inputmode="decimal" class="cell-input cell-input--right num" data-field="qty" value="${item.qty === 0 ? "0" : escapeHtml(item.qty)}" placeholder="0" />
+                </td>
+                <td class="col-price">
+                  <input type="text" inputmode="numeric" class="cell-input cell-input--right num" data-field="price" value="${formatNumber(item.price)}" placeholder="0" />
+                </td>
+                <td class="col-amount num">
+                  <span class="cell-amount-text" data-amount-cell>${formatNumber(lineAmt)}</span>
+                </td>
+                <td class="col-note">
+                  <input type="text" class="cell-input" data-field="note" value="${escapeHtml(item.note)}" placeholder="비고" />
+                  <button type="button" class="row-delete-btn" data-action="delete-row" title="줄 삭제" aria-label="품목 줄 삭제">✕</button>
+                </td>
+              </tr>
+            `;
+          })
+          .join("");
+
+        const emptyHtml =
+          q.items.length === 0
+            ? `
+            <div class="empty-state" tabindex="0" data-empty-paste="true">
+              <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="6" y="9" width="36" height="30" rx="3" />
+                <line x1="6" y1="18" x2="42" y2="18" />
+                <line x1="6" y1="28" x2="42" y2="28" />
+                <line x1="18" y1="18" x2="18" y2="39" />
+                <line x1="30" y1="18" x2="30" y2="39" />
+              </svg>
+              <p class="empty-state-title">엑셀에서 복사해 여기에 붙여넣으세요 (Ctrl+V)</p>
+              <p class="empty-state-sub">품목명 · 규격 · 수량 · 단가 순서의 여러 줄을 한 번에 붙여넣을 수 있습니다</p>
+            </div>
+          `
+            : "";
+
+        return `
+          <header class="doc-title-wrap">
+            <h1 class="doc-title">${isStatement ? "거 래 명 세 서" : "견 적 서"}</h1>
+          </header>
+
+          <section class="doc-info-grid">
+            <div class="recipient-block">
+              <div>
+                <div class="recipient-label">${isStatement ? "공급받는자" : "받는 곳"}</div>
+                <div class="recipient-company-row">
+                  <input
+                    type="text"
+                    class="doc-input recipient-company-input"
+                    data-doc-field="recipientCompany"
+                    value="${escapeHtml(q.recipientCompany)}"
+                    placeholder="회사명 또는 성함"
+                  />
+                </div>
+                <div class="recipient-contact-row">
+                  <input
+                    type="text"
+                    class="doc-input recipient-contact-input"
+                    data-doc-field="recipientContact"
+                    value="${escapeHtml(q.recipientContact)}"
+                    placeholder="담당자"
+                  />
+                  <span class="honorific">귀하</span>
+                </div>
+              </div>
+
+              <div class="meta-list">
+                <span class="meta-key">${isStatement ? "거래일자" : "견적일"}</span>
+                <input type="text" class="doc-input meta-val-input num" data-doc-field="quoteDate" value="${escapeHtml(q.quoteDate)}" placeholder="YYYY-MM-DD" />
+
+                <span class="meta-key">견적번호</span>
+                <input type="text" class="doc-input meta-val-input num" data-doc-field="quoteNo" value="${escapeHtml(q.quoteNo)}" placeholder="Q-00000000-01" />
+
+                ${
+                  isStatement
+                    ? ""
+                    : `
+                  <span class="meta-key">유효기간</span>
+                  <input type="text" class="doc-input meta-val-input num" data-doc-field="validUntil" value="${escapeHtml(q.validUntil)}" placeholder="YYYY-MM-DD" />
+                `
+                }
+              </div>
+            </div>
+
+            <div class="supplier-wrap">
+              <div class="stamp-holder" data-stamp-holder>
+                ${buildStampSvg(q.supplier.name, filterId)}
+              </div>
+              <table class="supplier-table">
+                <tbody>
+                  <tr>
+                    <th rowspan="5" class="supplier-side-th">공급자</th>
+                    <th class="supplier-key-th">상호</th>
+                    <td class="supplier-name-cell">
+                      <input type="text" class="doc-input supplier-input supplier-name-input" data-supplier-field="name" value="${escapeHtml(q.supplier.name)}" placeholder="상호명" />
+                    </td>
+                  </tr>
+                  <tr>
+                    <th class="supplier-key-th">대표자</th>
+                    <td>
+                      <input type="text" class="doc-input supplier-input" data-supplier-field="ceo" value="${escapeHtml(q.supplier.ceo)}" placeholder="대표자 성함" />
+                    </td>
+                  </tr>
+                  <tr>
+                    <th class="supplier-key-th">사업자번호</th>
+                    <td>
+                      <input type="text" class="doc-input supplier-input num" data-supplier-field="bizNo" value="${escapeHtml(q.supplier.bizNo)}" placeholder="000-00-00000" />
+                    </td>
+                  </tr>
+                  <tr>
+                    <th class="supplier-key-th">주소</th>
+                    <td>
+                      <input type="text" class="doc-input supplier-input" data-supplier-field="address" value="${escapeHtml(q.supplier.address)}" placeholder="사업장 주소" />
+                    </td>
+                  </tr>
+                  <tr>
+                    <th class="supplier-key-th">전화</th>
+                    <td>
+                      <input type="text" class="doc-input supplier-input num" data-supplier-field="phone" value="${escapeHtml(q.supplier.phone)}" placeholder="02-0000-0000" />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="total-banner" aria-label="합계 금액">
+            <span class="total-banner-label">합계금액 (부가세 포함)</span>
+            <span class="total-banner-amount num" data-korean-total>
+              ${numberToKoreanCurrency(totals.total)} (₩${formatNumber(totals.total)})
+            </span>
+          </section>
+
+          <section class="items-section">
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th class="col-no">번호</th>
+                  <th class="col-name">품목명</th>
+                  <th class="col-spec">규격</th>
+                  <th class="col-qty">수량</th>
+                  <th class="col-price">단가</th>
+                  <th class="col-amount">금액</th>
+                  <th class="col-note">비고</th>
+                </tr>
+              </thead>
+              <tbody data-items-tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+            ${emptyHtml}
+          </section>
+
+          <section class="summary-section" aria-label="금액 요약">
+            <div class="summary-box">
+              <div class="summary-row">
+                <span class="summary-row-label">공급가액</span>
+                <span class="summary-row-val num" data-sum-supply>₩${formatNumber(totals.supply)}</span>
+              </div>
+              <div class="summary-row">
+                <span class="summary-row-label">부가세 (10%)</span>
+                <span class="summary-row-val num" data-sum-vat>₩${formatNumber(totals.vat)}</span>
+              </div>
+              <div class="summary-row summary-row--total">
+                <span class="summary-row-label">합계</span>
+                <span class="summary-row-val num" data-sum-total>₩${formatNumber(totals.total)}</span>
+              </div>
+            </div>
+          </section>
+
+          <footer class="doc-footer">
+            <span>${isStatement ? "위와 같이 납품(거래)하였음을 확인합니다." : "위와 같이 견적합니다."}</span>
+            <span class="num">${escapeHtml(q.supplier.name || "")}</span>
+          </footer>
+        `;
+      }
+
+      const faceFront = document.getElementById("faceFront");
+      const faceBack = document.getElementById("faceBack");
+      const paperCard = document.getElementById("paperCard");
+      const paperStage = document.getElementById("paperStage");
+      const paperScaleBox = document.getElementById("paperScaleBox");
+
+      function renderFaces(animateRowsStartIdx = -1) {
+        faceFront.innerHTML = renderFaceHtml("quote");
+        faceBack.innerHTML = renderFaceHtml("statement");
+
+        const activeTotals = computeTotals(appState.current.items);
+        appState.displayedTotals = { ...activeTotals };
+
+        if (animateRowsStartIdx >= 0 && !prefersReducedMotion()) {
+          [faceFront, faceBack].forEach((face) => {
+            const rows = face.querySelectorAll("tbody tr");
+            rows.forEach((tr, idx) => {
+              if (idx >= animateRowsStartIdx) {
+                const offset = idx - animateRowsStartIdx;
+                tr.classList.add("row-paste-enter");
+                tr.style.animationDelay = `${offset * 0.1}s`;
+                const amtEl = tr.querySelector("[data-amount-cell]");
+                if (amtEl) {
+                  amtEl.classList.add("cell-gold-flash");
+                  amtEl.style.animationDelay = `${offset * 0.1 + 0.12}s`;
+                }
+              }
+            });
+          });
+        }
+
+        updatePaperScale();
+      }
+
+      /* ---------- Animated Totals Roll-up (0.7s) ---------- */
+      function updateTotalsWithAnimation(newTotals) {
+        const start = { ...appState.displayedTotals };
+        const changed =
+          start.supply !== newTotals.supply ||
+          start.vat !== newTotals.vat ||
+          start.total !== newTotals.total;
+
+        if (!changed) return;
+
+        // Smooth Korean text update
+        const koreanText = `${numberToKoreanCurrency(newTotals.total)} (₩${formatNumber(newTotals.total)})`;
+        document.querySelectorAll("[data-korean-total]").forEach((el) => {
+          if (!prefersReducedMotion()) {
+            el.classList.add("is-updating");
+            setTimeout(() => {
+              el.textContent = koreanText;
+              el.classList.remove("is-updating");
+            }, 130);
+          } else {
+            el.textContent = koreanText;
+          }
+        });
+
+        if (prefersReducedMotion()) {
+          appState.displayedTotals = { ...newTotals };
+          applySummaryText(newTotals);
+          return;
+        }
+
+        if (appState.rollRaf) cancelAnimationFrame(appState.rollRaf);
+
+        const duration = 700;
+        const startTime = performance.now();
+
+        function easeOutCubic(t) {
+          return 1 - Math.pow(1 - t, 3);
+        }
+
+        function tick(now) {
+          const elapsed = now - startTime;
+          const progress = Math.min(1, elapsed / duration);
+          const eased = easeOutCubic(progress);
+
+          const curSupply = Math.round(start.supply + (newTotals.supply - start.supply) * eased);
+          const curVat = Math.round(start.vat + (newTotals.vat - start.vat) * eased);
+          const curTotal = Math.round(start.total + (newTotals.total - start.total) * eased);
+
+          appState.displayedTotals = { supply: curSupply, vat: curVat, total: curTotal };
+          applySummaryText(appState.displayedTotals);
+
+          if (progress < 1) {
+            appState.rollRaf = requestAnimationFrame(tick);
+          } else {
+            appState.displayedTotals = { ...newTotals };
+            applySummaryText(newTotals);
+            appState.rollRaf = null;
+          }
+        }
+
+        appState.rollRaf = requestAnimationFrame(tick);
+      }
+
+      function applySummaryText(t) {
+        document.querySelectorAll("[data-sum-supply]").forEach((el) => {
+          el.textContent = `₩${formatNumber(t.supply)}`;
+        });
+        document.querySelectorAll("[data-sum-vat]").forEach((el) => {
+          el.textContent = `₩${formatNumber(t.vat)}`;
+        });
+        document.querySelectorAll("[data-sum-total]").forEach((el) => {
+          el.textContent = `₩${formatNumber(t.total)}`;
+        });
+      }
+
+      /* ---------- Sync Other Face Without Re-rendering Focused Input ---------- */
+      function syncMirroredInputs(sourceFace, selector, value) {
+        const targetFace = sourceFace === faceFront ? faceBack : faceFront;
+        const targetEl = targetFace.querySelector(selector);
+        if (targetEl && targetEl.value !== value) {
+          targetEl.value = value;
+        }
+      }
+
+      function updateStamps() {
+        const name = appState.current.supplier.name;
+        const frontStamp = faceFront.querySelector("[data-stamp-holder]");
+        const backStamp = faceBack.querySelector("[data-stamp-holder]");
+        if (frontStamp) frontStamp.innerHTML = buildStampSvg(name, "stampRoughFront");
+        if (backStamp) backStamp.innerHTML = buildStampSvg(name, "stampRoughBack");
+        [faceFront, faceBack].forEach((f) => {
+          const footerCompany = f.querySelector(".doc-footer span:last-child");
+          if (footerCompany) footerCompany.textContent = name || "";
+        });
+      }
+
+      /* ---------- Event Delegation on Both Faces ---------- */
+      function handleFaceInput(e) {
+        const face = e.currentTarget;
+        const target = e.target;
+
+        // Document-level fields
+        const docField = target.getAttribute("data-doc-field");
+        if (docField) {
+          appState.current[docField] = target.value;
+          syncMirroredInputs(face, `[data-doc-field="${docField}"]`, target.value);
+          persistCurrent();
+          return;
+        }
+
+        // Supplier fields
+        const supField = target.getAttribute("data-supplier-field");
+        if (supField) {
+          appState.current.supplier[supField] = target.value;
+          syncMirroredInputs(face, `[data-supplier-field="${supField}"]`, target.value);
+          if (supField === "name") {
+            updateStamps();
+          }
+          persistCurrent();
+          return;
+        }
+
+        // Item row fields
+        const itemField = target.getAttribute("data-field");
+        const tr = target.closest("tr[data-row-index]");
+        if (itemField && tr) {
+          const idx = Number(tr.getAttribute("data-row-index"));
+          const item = appState.current.items[idx];
+          if (!item) return;
+
+          if (itemField === "qty") {
+            item.qty = parseNumericInput(target.value);
+          } else if (itemField === "price") {
+            item.price = parseIntPrice(target.value);
+          } else {
+            item[itemField] = target.value;
+          }
+
+          // Update line amount on both faces
+          const lineAmt = Math.round(parseNumericInput(item.qty) * parseIntPrice(item.price));
+          [faceFront, faceBack].forEach((f) => {
+            const row = f.querySelector(`tr[data-row-index="${idx}"]`);
+            if (!row) return;
+            const amtEl = row.querySelector("[data-amount-cell]");
+            if (amtEl) amtEl.textContent = formatNumber(lineAmt);
+            if (f !== face) {
+              const mirroredInput = row.querySelector(`[data-field="${itemField}"]`);
+              if (mirroredInput) mirroredInput.value = target.value;
+            }
+          });
+
+          const newTotals = computeTotals(appState.current.items);
+          updateTotalsWithAnimation(newTotals);
+          persistCurrent();
+        }
+      }
+
+      function handleFaceBlur(e) {
+        const target = e.target;
+        const itemField = target.getAttribute("data-field");
+        const tr = target.closest("tr[data-row-index]");
+        if (!itemField || !tr) return;
+        const idx = Number(tr.getAttribute("data-row-index"));
+        const item = appState.current.items[idx];
+        if (!item) return;
+
+        if (itemField === "price") {
+          const clean = parseIntPrice(target.value);
+          item.price = clean;
+          const formatted = formatNumber(clean);
+          [faceFront, faceBack].forEach((f) => {
+            const inp = f.querySelector(`tr[data-row-index="${idx}"] [data-field="price"]`);
+            if (inp) inp.value = formatted;
+          });
+          persistCurrent();
+        } else if (itemField === "qty") {
+          const clean = parseNumericInput(target.value);
+          item.qty = clean;
+          [faceFront, faceBack].forEach((f) => {
+            const inp = f.querySelector(`tr[data-row-index="${idx}"] [data-field="qty"]`);
+            if (inp) inp.value = String(clean);
+          });
+          persistCurrent();
+        }
+      }
+
+      function handleFaceClick(e) {
+        const btn = e.target.closest("[data-action='delete-row']");
+        if (!btn) return;
+        const tr = btn.closest("tr[data-row-index]");
+        if (!tr) return;
+        const idx = Number(tr.getAttribute("data-row-index"));
+        appState.current.items.splice(idx, 1);
+        persistCurrent();
+        const prev = { ...appState.displayedTotals };
+        renderFaces(-1);
+        appState.displayedTotals = prev;
+        applySummaryText(prev);
+        updateTotalsWithAnimation(computeTotals(appState.current.items));
+      }
+
+      /* ---------- Excel / Google Sheets Paste Handling ---------- */
+      function parseClipboardTable(text) {
+        const normalized = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        const lines = normalized.split("\n").filter((line) => line.trim() !== "");
+        if (lines.length === 0) return null;
+
+        const hasTab = lines.some((l) => l.includes("\t"));
+        if (!hasTab && lines.length === 1) {
+          // Single cell paste -> let browser handle normally
+          return null;
+        }
+
+        const parsedRows = [];
+        for (const line of lines) {
+          const cols = line.split("\t");
+          // Need at least 2 columns or multi-line structured paste
+          const name = (cols[0] ?? "").trim();
+          const spec = (cols[1] ?? "").trim();
+          const qty = parseNumericInput(cols[2] ?? 0);
+          const price = parseIntPrice(cols[3] ?? 0);
+          const note = (cols[4] ?? "").trim();
+
+          if (!name && !spec && qty === 0 && price === 0) continue;
+          parsedRows.push({ name, spec, qty, price, note });
+        }
+
+        return parsedRows.length > 0 ? parsedRows : null;
+      }
+
+      function handlePaste(e) {
+        const target = e.target;
+        const isInTable = Boolean(target.closest("[data-items-tbody]"));
+        const isInEmpty = Boolean(target.closest("[data-empty-paste]"));
+        if (!isInTable && !isInEmpty) return;
+
+        const clipText = (e.clipboardData || window.clipboardData)?.getData("text/plain");
+        if (!clipText) return;
+
+        const parsedRows = parseClipboardTable(clipText);
+        if (!parsedRows) return; // Single-cell paste: normal behavior
+
+        e.preventDefault();
+        const startIdx = appState.current.items.length;
+        const prevTotals = { ...appState.displayedTotals };
+
+        appState.current.items.push(...parsedRows);
+        persistCurrent();
+        renderFaces(startIdx);
+
+        appState.displayedTotals = prevTotals;
+        applySummaryText(prevTotals);
+        updateTotalsWithAnimation(computeTotals(appState.current.items));
+      }
+
+      [faceFront, faceBack].forEach((face) => {
+        face.addEventListener("input", handleFaceInput);
+        face.addEventListener("focusout", handleFaceBlur);
+        face.addEventListener("click", handleFaceClick);
+        face.addEventListener("paste", handlePaste);
+      });
+
+      /* ---------- Saved Quotes Management ---------- */
+      const savedListEl = document.getElementById("savedList");
+      const savedCountEl = document.getElementById("savedCount");
+      let toastTimer = null;
+
+      function showToast(msg) {
+        const toastEl = document.getElementById("toast");
+        const toastText = document.getElementById("toastText");
+        toastText.textContent = msg;
+        toastEl.classList.add("is-visible");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          toastEl.classList.remove("is-visible");
+        }, 2200);
+      }
+
+      function renderSavedList(enteringQuoteNo = null) {
+        savedCountEl.textContent = String(appState.saved.length);
+
+        if (appState.saved.length === 0) {
+          savedListEl.innerHTML = `
+            <div class="saved-empty">
+              저장한 견적이 아직 없습니다.<br />
+              위 도구 막대에서 <strong>저장</strong>을 눌러 보관하세요.
+            </div>
+          `;
+          return;
+        }
+
+        savedListEl.innerHTML = appState.saved
+          .map((q) => {
+            const totals = computeTotals(q.items || []);
+            const isActive = q.quoteNo === appState.current.quoteNo;
+            const isEntering = enteringQuoteNo && q.quoteNo === enteringQuoteNo;
+            const recipientText = [q.recipientCompany, q.recipientContact].filter(Boolean).join(" ") || "받는 곳 미입력";
+            return `
+              <div
+                class="saved-card ${isActive ? "is-active" : ""} ${isEntering ? "is-entering" : ""}"
+                role="button"
+                tabindex="0"
+                data-load-quote="${escapeHtml(q.quoteNo)}"
+              >
+                <div class="saved-card-top">
+                  <span class="saved-card-no num">${escapeHtml(q.quoteNo)}</span>
+                  <span class="saved-card-date num">${escapeHtml(q.quoteDate)}</span>
+                </div>
+                <div class="saved-card-recipient">${escapeHtml(recipientText)}</div>
+                <div class="saved-card-total num">₩${formatNumber(totals.total)}</div>
+                <button
+                  type="button"
+                  class="saved-card-del"
+                  data-delete-quote="${escapeHtml(q.quoteNo)}"
+                  title="저장 목록에서 삭제"
+                  aria-label="저장한 견적 삭제"
+                >✕</button>
+              </div>
+            `;
+          })
+          .join("");
+      }
+
+      function saveCurrentQuote(showNotification = true) {
+        const snapshot = JSON.parse(JSON.stringify(appState.current));
+        const existingIdx = appState.saved.findIndex((q) => q.quoteNo === snapshot.quoteNo);
+        if (existingIdx >= 0) {
+          appState.saved.splice(existingIdx, 1);
+        }
+        appState.saved.unshift(snapshot);
+        persistSaved();
+        persistCurrent();
+        renderSavedList(snapshot.quoteNo);
+        if (showNotification) {
+          showToast("저장했어요");
+        }
+      }
+
+      savedListEl.addEventListener("click", (e) => {
+        const delBtn = e.target.closest("[data-delete-quote]");
+        if (delBtn) {
+          e.stopPropagation();
+          const no = delBtn.getAttribute("data-delete-quote");
+          appState.saved = appState.saved.filter((q) => q.quoteNo !== no);
+          persistSaved();
+          renderSavedList();
+          return;
+        }
+
+        const card = e.target.closest("[data-load-quote]");
+        if (!card) return;
+        const no = card.getAttribute("data-load-quote");
+        const found = appState.saved.find((q) => q.quoteNo === no);
+        if (!found) return;
+
+        appState.current = JSON.parse(JSON.stringify(found));
+        persistCurrent();
+        renderFaces(-1);
+        renderSavedList();
+      });
+
+      savedListEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          const card = e.target.closest("[data-load-quote]");
+          if (card) {
+            e.preventDefault();
+            card.click();
+          }
+        }
+      });
+
+      /* ---------- Toolbar Actions ---------- */
+      document.getElementById("btnAddRow").addEventListener("click", () => {
+        const prev = { ...appState.displayedTotals };
+        appState.current.items.push({ name: "", spec: "", qty: 1, price: 0, note: "" });
+        persistCurrent();
+        const newIdx = appState.current.items.length - 1;
+        renderFaces(newIdx);
+        appState.displayedTotals = prev;
+        applySummaryText(prev);
+        updateTotalsWithAnimation(computeTotals(appState.current.items));
+
+        const activeFace = appState.isFlipped ? faceBack : faceFront;
+        const firstInput = activeFace.querySelector(`tr[data-row-index="${newIdx}"] [data-field="name"]`);
+        if (firstInput) firstInput.focus();
+      });
+
+      document.getElementById("btnFlip").addEventListener("click", () => {
+        appState.isFlipped = !appState.isFlipped;
+        paperCard.classList.toggle("is-flipped", appState.isFlipped);
+        faceFront.setAttribute("aria-hidden", appState.isFlipped ? "true" : "false");
+        faceBack.setAttribute("aria-hidden", appState.isFlipped ? "false" : "true");
+        document.getElementById("btnFlipLabel").textContent = appState.isFlipped
+          ? "견적서로 보기"
+          : "거래명세서로 보기";
+      });
+
+      document.getElementById("btnSave").addEventListener("click", () => {
+        saveCurrentQuote(true);
+      });
+
+      document.getElementById("btnNew").addEventListener("click", () => {
+        saveCurrentQuote(false);
+
+        const today = formatDate(new Date());
+        const nextNo = getNextQuoteNo(today, appState.saved, appState.current.quoteNo);
+        const keptSupplier = JSON.parse(JSON.stringify(appState.current.supplier));
+
+        appState.current = {
+          quoteNo: nextNo,
+          quoteDate: today,
+          validUntil: addDays(today, 30),
+          recipientCompany: "",
+          recipientContact: "",
+          supplier: keptSupplier,
+          items: []
+        };
+
+        persistCurrent();
+        renderFaces(-1);
+        renderSavedList();
+        showToast("새 견적서를 열었어요");
+      });
+
+      document.getElementById("btnPrint").addEventListener("click", () => {
+        window.print();
+      });
+
+      /* ---------- Responsive A4 Paper Scaling ---------- */
+      function updatePaperScale() {
+        const paperBaseW = 794;
+        const activeFace = appState.isFlipped ? faceBack : faceFront;
+        const naturalH = Math.max(faceFront.offsetHeight, faceBack.offsetHeight, activeFace.offsetHeight, 1123);
+
+        // Keep back face height aligned
+        faceFront.style.minHeight = "";
+        faceBack.style.minHeight = "";
+
+        const viewportW = document.documentElement.clientWidth;
+        const horizontalPadding = viewportW <= 640 ? 24 : 48;
+        const availableW = Math.max(280, viewportW - horizontalPadding);
+
+        if (availableW < paperBaseW) {
+          const scale = availableW / paperBaseW;
+          paperStage.style.transform = `scale(${scale})`;
+          paperScaleBox.style.width = `${Math.round(paperBaseW * scale)}px`;
+          paperScaleBox.style.height = `${Math.ceil(naturalH * scale)}px`;
+        } else {
+          paperStage.style.transform = "";
+          paperScaleBox.style.width = `${paperBaseW}px`;
+          paperScaleBox.style.height = "auto";
+        }
+      }
+
+      window.addEventListener("resize", updatePaperScale);
+      if (window.ResizeObserver) {
+        const ro = new ResizeObserver(() => updatePaperScale());
+        ro.observe(faceFront);
+        ro.observe(faceBack);
+      }
+
+      /* ---------- Init ---------- */
+      renderFaces(-1);
+      renderSavedList();
+    })();
+  </script>
+</body>
+</html>
