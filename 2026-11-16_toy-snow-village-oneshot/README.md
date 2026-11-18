@@ -2,28 +2,31 @@
 
 킴영감의 AI 코딩팁! 쇼츠에서 같은 프롬프트 한 번으로 만들어 본 결과물입니다.
 
-## 프롬프트 (R1)
+## 프롬프트
 
 ```
 눈 내리는 밤의 3D 작은 마을을 만들어. index.html 파일 하나로, 집 여러 채와 불이 켜진 창문, 계속 내리는 눈, 마우스로 드래그해서 둘러보기, 낮과 밤을 바꾸는 버튼이 있어야 해. 필요한 라이브러리는 마음대로 써도 돼. 질문하지 말고 끝까지 완성해.
 ```
 
-## 조합과 시도
+## 모델과 결과물
 
-| 라운드 | 시도 | 도구 | 모델 | 추론 강도 | 결과물 | 걸린 시간 | 도구가 보고한 비용 |
-|---|---|---|---|---|---|---|---|
-| R1 | argon-med-t1 | agy | gemini-4-argon-medium | 기록 없음 | [`R1-argon-med-t1/`](R1-argon-med-t1/) | 263초 | 집계 안 함 |
-| R1 | fable-med-t1 | claude | fable | 기록 없음 | [`R1-fable-med-t1/`](R1-fable-med-t1/) | 267초 | $1.69 |
-| R1 | grok47-t1 | grok | grok-4.7 | 기록 없음 | 없음(실패) | 59초 | $0.10 |
-| R1 | grok47-t2 | grok | grok-4.7 | 기록 없음 | 없음(실패) | 284초 | $0.22 |
-| R1 | grok47-t3 | grok | grok-4.7 | 기록 없음 | [`R1-grok47-t3/`](R1-grok47-t3/) | 1117초 | $2.53 |
-| R1 | sol-med-t1 | codex | gpt-6.1-sol | 기록 없음 | [`R1-sol-med-t1/`](R1-sol-med-t1/) | 320초 | 집계 안 함 |
-| R1 | sonnet-med-t1 | claude | sonnet | medium | [`R1-sonnet-med-t1/`](R1-sonnet-med-t1/) | 74초 | $0.20 |
+| 모델 | 도구 | 추론 강도 | 결과물 | 시도 횟수 | 걸린 시간 | 도구가 보고한 비용 |
+|---|---|---|---|---|---|---|
+| gemini-4-argon-medium | agy | 기록 없음 | [`gemini-4-argon-medium/`](gemini-4-argon-medium/) | 1 | 263초 | 집계 안 함 |
+| claude-fable-5-2 | claude | 기록 없음 | [`claude-fable-5-2/`](claude-fable-5-2/) | 1 | 267초 | $1.69 |
+| grok-4.7 | grok | 기록 없음 | [`grok-4.7/`](grok-4.7/) | 3 | 1117초 | $2.53 |
+| gpt-6.1-sol | codex | 기록 없음 | [`gpt-6.1-sol/`](gpt-6.1-sol/) | 1 | 320초 | 집계 안 함 |
+| claude-sonnet-5-5 | claude | medium | [`claude-sonnet-5-5/`](claude-sonnet-5-5/) | 1 | 74초 | $0.20 |
 
 - 이 과제를 위 표의 시도만큼 돌린 결과일 뿐이며 모델이나 도구의 일반적인 우열을 말하지 않습니다.
-- 걸린 시간은 이 PC에서 한 번씩 잰 벽시계 시간입니다. 비용은 도구가 보고한 값이 있을 때만 적었고 구독·로그인 사용량이라 실제 청구액이 아닐 수 있습니다.
+- 걸린 시간은 결과물을 낸 시도를 이 PC에서 한 번 잰 벽시계 시간입니다. 비용은 도구가 보고한 값이 있을 때만 적었고 구독·로그인 사용량이라 실제 청구액이 아닐 수 있습니다.
 - 결과물은 AI가 만든 그대로이며 사람이 고치지 않았습니다.
-- 바로 실행되는 결과물은 GitHub Pages 로 열어 볼 수 있습니다: https://cs-covis.github.io/one-shot-prompt/2026-11-16_toy-snow-village-oneshot/<폴더>/ (공개한 뒤)
+- 바로 실행되는 결과물은 브라우저에서 열어 볼 수 있습니다:
+  - [gemini-4-argon-medium](https://cs-covis.github.io/one-shot-prompt/2026-11-16_toy-snow-village-oneshot/gemini-4-argon-medium/)
+  - [claude-fable-5-2](https://cs-covis.github.io/one-shot-prompt/2026-11-16_toy-snow-village-oneshot/claude-fable-5-2/)
+  - [grok-4.7](https://cs-covis.github.io/one-shot-prompt/2026-11-16_toy-snow-village-oneshot/grok-4.7/)
+  - [gpt-6.1-sol](https://cs-covis.github.io/one-shot-prompt/2026-11-16_toy-snow-village-oneshot/gpt-6.1-sol/)
+  - [claude-sonnet-5-5](https://cs-covis.github.io/one-shot-prompt/2026-11-16_toy-snow-village-oneshot/claude-sonnet-5-5/)
 
 ## 이 비교에서 알아 둘 것
 
